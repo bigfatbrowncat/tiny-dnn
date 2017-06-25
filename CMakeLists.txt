@@ -394,6 +394,9 @@ if(BUILD_BENCHMARKS)
     add_subdirectory(benchmarks)
 endif(BUILD_BENCHMARKS)
 
+add_subdirectory(xoxo)
+
+
 ####
 # Configuration summary
 include(cmake/summary.cmake)
