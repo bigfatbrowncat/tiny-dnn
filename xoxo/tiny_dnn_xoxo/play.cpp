@@ -217,7 +217,7 @@ public:
 		int k = 0;
 		for (size_t i = 0; i < y.size(); ++i)
 		{
-			if (t[i] != 0.0)
+			if (y[i] != 0.0)
 			{
 				d += (y[i] - t[i]) * (y[i] - t[i]);
 				k++;
@@ -273,6 +273,8 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	}
 	lessonsFile.close();
 
+	printf("Lessons in the book: %d\n", usefulLessons.size());
+
 	int training_batch = usefulLessons.size();
 	int batches_count = 1;
 
@@ -306,27 +308,28 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	printf("Training...\n");
 
 	size_t batch_size = training_batch;
-	double loss; int ee = 0;
+	double loss = 0; int ee = 0;
 	
 	double delta_loss_per_epoch;
 	
+	gradient_descent opt; opt.alpha = 0.05;
 	do
 	{
 		size_t epochs = 200;
-		gradient_descent opt; opt.alpha = 0.05; //opt.lambda = 0.99;
-		net.fit<mse_no_zeros>(opt, train_input_data, train_output_data, batch_size, epochs);
+		net.fit<mse>(opt, train_input_data, train_output_data, batch_size, epochs);
 
 		double old_loss = loss;
-		loss = net.get_loss<mse_no_zeros>(train_input_data, train_output_data);
+		loss = net.get_loss<mse>(train_input_data, train_output_data);
 
 		delta_loss_per_epoch = (old_loss - loss) / epochs;
+		//if (delta_loss_per_epoch < 0) opt.alpha /= 2;
 
-		cout << ee + 1 << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << endl;
-		ee++;
-	} while (abs(delta_loss_per_epoch) > mse_stop);
+		cout << "epoch " << ee << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << endl;
+		ee+=epochs;
+	} while (abs(loss) > mse_stop);
 }
 
-int main()
+int main(int argc, char** argv)
 {
 	const int field_w = 3, field_h = 3, vic_line_len = 3;
 
@@ -340,11 +343,17 @@ int main()
 	{
 		printf("Can't load the net. Creating a new one\n");
 
-		net << layers::fc(field_w * field_h, field_w * field_h * 3) << tanh_layer(field_w * field_h * 3) <<
-			layers::fc(field_w * field_h * 3, field_w * field_h * 3) << tanh_layer(field_w * field_h * 3) <<
-			layers::fc(field_w * field_h * 3, field_w * field_h * 3) << tanh_layer(field_w * field_h * 3) <<
-			layers::fc(field_w * field_h * 3, field_w * field_h);
+		net << layers::fc(field_w * field_h, field_w * field_h * 2) << tanh_layer(field_w * field_h * 2) <<
+			layers::fc(field_w * field_h * 2, field_w * field_h * 3) << tanh_layer(field_w * field_h * 3) <<
+			layers::fc(field_w * field_h * 3, field_w * field_h * 2) << tanh_layer(field_w * field_h * 2) <<
+			layers::fc(field_w * field_h * 2, field_w * field_h);
 	}
+
+	if (argc == 2 && strcmp(argv[1], "train-first") == 0)
+	{
+		train(field_w, field_h, net, 0.5);
+	}
+
 
 	vector<Lesson> lessons[2];	// Each player's lessons
 
@@ -511,7 +520,7 @@ int main()
 
 		printf("%d lessons appended to the book\n", usefulLessons.size());
 
-		train(field_w, field_h, net, 1e-5);
+		train(field_w, field_h, net, 0.5);
 
 		printf("Saving net...");
 		net.save("xoxonet.weights");
