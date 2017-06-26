@@ -137,8 +137,9 @@ public:
 		}
 	}
 
-	Lesson(vector<float> position, int field_w, int field_h, vector<float> priorities) :
+	Lesson(vector<float> position, int field_w, int field_h, int movei, int movej, vector<float> priorities) :
 		field_w(field_w), field_h(field_h),
+		movei(movei), movej(movej),
 		position(position), priorities(priorities)
 	{
 
@@ -174,6 +175,9 @@ public:
 			}
 		}
 
+		res.movei = fd - 1 - movej;
+		res.movej = movei;
+
 		return res;
 	}
 
@@ -187,6 +191,9 @@ public:
 				res.priorities[j * field_w + i] = res.priorities[j * field_w + (field_w - 1 - i)];
 			}
 		}
+
+		res.movei = field_w - 1 - movei;
+		res.movej = movej;
 
 		return res;
 	}
@@ -229,13 +236,60 @@ public:
 
 		for (size_t i = 0; i < y.size(); ++i)
 		{
-			d[i] = factor * (y[i] - t[i]);
+			d[i] = factor * t[i] * (y[i] - t[i]);
 		}
 
 		return d;
 	}
 };
 
+void makeMove(network<sequential> net, vector<float> field_data, int field_w, int field_h, int& movei, int& movej, int& victor)
+{
+	vec_t pos_item;
+	for (int j = 0; j < field_h; j++) {
+		for (int i = 0; i < field_w; i++) {
+			pos_item.push_back(field_data[j * field_w + i]);
+		}
+	}
+
+	vec_t result = net.predict(pos_item);
+
+	// Searching for the maximum
+	bool occupied;
+	float maxpriority;
+	do
+	{
+		occupied = false;
+		movei = -1; movej = -1;
+		maxpriority = -1.0;
+		for (int j = 0; j < field_h; j++)
+		{
+			for (int i = 0; i < field_w; i++)
+			{
+				if (result[j * field_w + i] > maxpriority)
+				{
+					maxpriority = result[j * field_w + i];
+					movei = i;
+					movej = j;
+
+					if (abs(field_data[j * field_w + i]) > 0.5)
+					{
+						occupied = true;
+						result[j * field_w + i] = -1.0; // clearing this priority
+						break;
+					}
+
+				}
+			}
+		}
+		if (maxpriority == -1.0)
+		{
+			victor = -1;
+			printf("Draw\n");
+			break;
+		}
+	} while (occupied);
+}
 
 void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 {
@@ -246,6 +300,15 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	lessonsFile.open("lessons.dat", ios::app | ios::binary | ios::in);
 	while (!lessonsFile.eof())
 	{
+		char magic = ' ';
+		lessonsFile.read(&magic, 1);
+		if (magic != 'L') break;
+
+		int movei;
+		lessonsFile.read((char*)&movei, 4);
+		int movej;
+		lessonsFile.read((char*)&movej, 4);
+
 		vector<float> position;
 		for (int j = 0; j < field_h; j++) {
 			for (int i = 0; i < field_w; i++) {
@@ -264,7 +327,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 			}
 		}
 
-		usefulLessons.push_back(Lesson(position, field_w, field_h, priorities));
+		usefulLessons.push_back(Lesson(position, field_w, field_h, movei, movej, priorities));
 	}
 	lessonsFile.close();
 
@@ -308,6 +371,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	double delta_loss_per_epoch;
 	
 	gradient_descent opt; opt.alpha = 1.0;
+	int succeeded_tests;
 	do
 	{
 		size_t epochs = 200;
@@ -317,11 +381,29 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 		loss = net.get_loss<mse_priorities>(train_input_data, train_output_data);
 
 		delta_loss_per_epoch = (old_loss - loss) / epochs;
-		if (delta_loss_per_epoch < 0) opt.alpha /= 2;
+		if (delta_loss_per_epoch < 0) opt.alpha /= 1.5;
 
-		cout << "epoch " << ee << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << endl;
+		// Scoring
+
+		succeeded_tests = 0;
+		for (int i = 0; i < usefulLessons.size(); i++)
+		{
+			vector<float> field_data = usefulLessons[i].position;
+
+			int movei, movej, victor;
+			makeMove(net, field_data, field_w, field_h, movei, movej, victor);
+
+			if (movei == usefulLessons[i].movei &&
+				movej == usefulLessons[i].movej)
+			{
+				succeeded_tests++;
+			}
+		}
+		
+		cout << "epoch " << ee << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << "; learned : " << succeeded_tests << " of " << usefulLessons.size() << endl;
+
 		ee+=epochs;
-	} while (abs(loss) > mse_stop);
+	} while (succeeded_tests < usefulLessons.size()  /*abs(loss) > mse_stop*/);
 }
 
 int main(int argc, char** argv)
@@ -340,16 +422,17 @@ int main(int argc, char** argv)
 
 		int size = field_w * field_h;
 
-		net << layers::fc(size, size * 5) << tanh_layer(size * 5) <<
-			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) << 
-			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
-			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
-			layers::fc(size * 5, size) << tanh_layer(size);
+		int maps = 100;
+
+		net << layers::conv(field_w, field_h, 3, 1, maps) << 
+			layers::fc(maps, maps) << tanh_layer(maps) <<
+			layers::fc(maps, maps) << tanh_layer(maps) <<
+			layers::deconv(1, 1, 3, maps, 1);
 	}
 
 	if (argc == 2 && strcmp(argv[1], "train-first") == 0)
 	{
-		train(field_w, field_h, net, 0.5);
+		train(field_w, field_h, net, 0.1);
 	}
 
 
@@ -401,47 +484,7 @@ int main(int argc, char** argv)
 			{
 				// AI move
 
-				vec_t pos_item;
-				for (int j = 0; j < field_h; j++) {
-					for (int i = 0; i < field_w; i++) {
-						pos_item.push_back(field_data[j * field_w + i]);
-					}
-				}
-
-				vec_t result = net.predict(pos_item);
-
-				// Searching for the maximum
-				bool occupied;
-				float maxpriority;
-				do
-				{
-					occupied = false;
-					movei = -1; movej = -1;
-					maxpriority = -1.0;
-					for (int j = 0; j < field_h; j++) {
-						for (int i = 0; i < field_w; i++) {
-							if (result[j * field_w + i] > maxpriority)
-							{
-								maxpriority = result[j * field_w + i];
-								movei = i;
-								movej = j;
-
-								if (abs(field_data[j * field_w + i]) > 0.5)
-								{
-									occupied = true;
-									result[j * field_w + i] = -1.0; // clearing this priority
-									break;
-								}
-
-							}
-						}
-					}
-					if (maxpriority == -1.0) {
-						victor = -1;
-						printf("Draw\n");
-						break;
-					}
-				} while (occupied);
+				makeMove(net, field_data, field_w, field_h, movei, movej, victor);
 			}
 
 			if (victor != -1) {
@@ -454,7 +497,7 @@ int main(int argc, char** argv)
 	} while (victor < -1);
 
 	if (victor == userPlayerIndex) {
-		printf("Player wins. I shall learn\n");
+		printf("Other player wins. I shall learn\n");
 
 		vector<Lesson> usefulLessons;
 		float priority = 1.0;
@@ -504,6 +547,10 @@ int main(int argc, char** argv)
 		lessonsFile.open("lessons.dat", ios::app | ios::binary | ios::out);
 		for (int k = 0; k < usefulLessons.size(); k++)
 		{
+			lessonsFile.write("L", 1);	// Magic for a lesson
+
+			lessonsFile.write((const char*) &(usefulLessons[k].movei), 4);
+			lessonsFile.write((const char*) &(usefulLessons[k].movej), 4);
 			for (int j = 0; j < field_h; j++) {
 				for (int i = 0; i < field_w; i++) {
 					lessonsFile.write((const char*) &(usefulLessons[k].position[j * field_w + i]), 4);
@@ -519,7 +566,7 @@ int main(int argc, char** argv)
 
 		printf("%d lessons appended to the book\n", usefulLessons.size());
 
-		train(field_w, field_h, net, 0.5);
+		train(field_w, field_h, net, 0.1);
 
 		printf("Saving net...");
 		net.save("xoxonet.weights");
