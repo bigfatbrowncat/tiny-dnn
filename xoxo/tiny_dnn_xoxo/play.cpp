@@ -208,23 +208,18 @@ public:
 
 // mean-squared-error loss function for regression
 
-class mse_no_zeros {
+class mse_priorities {
 public:
 	static float f(const vec_t &y, const vec_t &t) {
 		assert(y.size() == t.size());
 		float d{ 0.0 };
 
-		int k = 0;
 		for (size_t i = 0; i < y.size(); ++i)
 		{
-			if (y[i] != 0.0)
-			{
-				d += (y[i] - t[i]) * (y[i] - t[i]);
-				k++;
-			}
+			d += t[i] * (y[i] - t[i]) * (y[i] - t[i]);
 		}
 
-		return d / static_cast<float>(k);
+		return d / static_cast<float>(y.size());
 	}
 
 	static vec_t df(const vec_t &y, const vec_t &t) {
@@ -316,17 +311,17 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	do
 	{
 		size_t epochs = 200;
-		net.fit<mse>(opt, train_input_data, train_output_data, batch_size, epochs);
+		net.fit<mse_priorities>(opt, train_input_data, train_output_data, batch_size, epochs);
 
 		double old_loss = loss;
-		loss = net.get_loss<mse>(train_input_data, train_output_data);
+		loss = net.get_loss<mse_priorities>(train_input_data, train_output_data);
 
 		delta_loss_per_epoch = (old_loss - loss) / epochs;
 		if (delta_loss_per_epoch < 0) opt.alpha /= 2;
 
 		cout << "epoch " << ee << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << endl;
 		ee+=epochs;
-	} while (abs(delta_loss_per_epoch) > mse_stop);
+	} while (abs(loss) > mse_stop);
 }
 
 int main(int argc, char** argv)
@@ -343,16 +338,18 @@ int main(int argc, char** argv)
 	{
 		printf("Can't load the net. Creating a new one\n");
 
-		net << layers::fc(field_w * field_h, field_w * field_h * 4) << tanh_layer(field_w * field_h * 4) <<
-			layers::fc(field_w * field_h * 4, field_w * field_h * 4) << tanh_layer(field_w * field_h * 4) << 
-			layers::fc(field_w * field_h * 4, field_w * field_h * 4) << tanh_layer(field_w * field_h * 4) <<
-			layers::fc(field_w * field_h * 4, field_w * field_h * 3) << tanh_layer(field_w * field_h * 3) <<
-			layers::fc(field_w * field_h * 3, field_w * field_h);
+		int size = field_w * field_h;
+
+		net << layers::fc(size, size * 5) << tanh_layer(size * 5) <<
+			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) << 
+			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
+			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
+			layers::fc(size * 5, size) << tanh_layer(size);
 	}
 
 	if (argc == 2 && strcmp(argv[1], "train-first") == 0)
 	{
-		train(field_w, field_h, net, 1e-5);
+		train(field_w, field_h, net, 0.5);
 	}
 
 
@@ -522,7 +519,7 @@ int main(int argc, char** argv)
 
 		printf("%d lessons appended to the book\n", usefulLessons.size());
 
-		train(field_w, field_h, net, 1e-5);
+		train(field_w, field_h, net, 0.5);
 
 		printf("Saving net...");
 		net.save("xoxonet.weights");
