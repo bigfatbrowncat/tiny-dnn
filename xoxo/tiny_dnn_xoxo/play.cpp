@@ -312,7 +312,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	
 	double delta_loss_per_epoch;
 	
-	gradient_descent opt; opt.alpha = 0.05;
+	gradient_descent opt; opt.alpha = 1.0;
 	do
 	{
 		size_t epochs = 200;
@@ -322,11 +322,11 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 		loss = net.get_loss<mse>(train_input_data, train_output_data);
 
 		delta_loss_per_epoch = (old_loss - loss) / epochs;
-		//if (delta_loss_per_epoch < 0) opt.alpha /= 2;
+		if (delta_loss_per_epoch < 0) opt.alpha /= 2;
 
 		cout << "epoch " << ee << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << endl;
 		ee+=epochs;
-	} while (abs(loss) > mse_stop);
+	} while (abs(delta_loss_per_epoch) > mse_stop);
 }
 
 int main(int argc, char** argv)
@@ -343,15 +343,16 @@ int main(int argc, char** argv)
 	{
 		printf("Can't load the net. Creating a new one\n");
 
-		net << layers::fc(field_w * field_h, field_w * field_h * 2) << tanh_layer(field_w * field_h * 2) <<
-			layers::fc(field_w * field_h * 2, field_w * field_h * 3) << tanh_layer(field_w * field_h * 3) <<
-			layers::fc(field_w * field_h * 3, field_w * field_h * 2) << tanh_layer(field_w * field_h * 2) <<
-			layers::fc(field_w * field_h * 2, field_w * field_h);
+		net << layers::fc(field_w * field_h, field_w * field_h * 4) << tanh_layer(field_w * field_h * 4) <<
+			layers::fc(field_w * field_h * 4, field_w * field_h * 4) << tanh_layer(field_w * field_h * 4) << 
+			layers::fc(field_w * field_h * 4, field_w * field_h * 4) << tanh_layer(field_w * field_h * 4) <<
+			layers::fc(field_w * field_h * 4, field_w * field_h * 3) << tanh_layer(field_w * field_h * 3) <<
+			layers::fc(field_w * field_h * 3, field_w * field_h);
 	}
 
 	if (argc == 2 && strcmp(argv[1], "train-first") == 0)
 	{
-		train(field_w, field_h, net, 0.5);
+		train(field_w, field_h, net, 1e-5);
 	}
 
 
@@ -364,7 +365,8 @@ int main(int argc, char** argv)
 		}
 	}
 
-	int userPlayerIndex = 0;
+	srand(time(nullptr));
+	int userPlayerIndex = rand() % 2;
 
 	int victor = -2;
 	do {
@@ -520,7 +522,7 @@ int main(int argc, char** argv)
 
 		printf("%d lessons appended to the book\n", usefulLessons.size());
 
-		train(field_w, field_h, net, 0.5);
+		train(field_w, field_h, net, 1e-5);
 
 		printf("Saving net...");
 		net.save("xoxonet.weights");
