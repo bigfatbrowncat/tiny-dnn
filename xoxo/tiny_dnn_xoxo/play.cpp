@@ -118,29 +118,122 @@ float checkVictory(vector<float> field_data, int field_w, int field_h, int line_
 	return 0.0; // No victory found
 }
 
+class Point {
+public:
+	int i, j, width, height;
+
+	Point(int i, int j, int width, int height) : i(i), j(j), width(width), height(height) { }
+
+	Point rotateClockwise() const
+	{
+		Point res(*this);
+		assert(width == height);
+
+		res.i = width - 1 - j;
+		res.j = i;
+
+		return res;
+	}
+
+	Point mirrorHorizontal() const
+	{
+		Point res(*this);
+
+		res.i = width - 1 - i;
+		res.j = j;
+
+		return res;
+	}
+
+
+};
+
+class Table
+{
+public:
+	int width, height;
+	vector<float> vals;
+
+	Table(vector<float> vals, int width, int height) : vals(vals), width(width), height(height) { }
+	Table(int width, int height) : width(width), height(height) { }
+
+	Table inverse() const
+	{
+		Table res(*this);
+
+		for (int j = 0; j < height; j++) {
+			for (int i = 0; i < width; i++) {
+				res.vals[j * width + i] *= -1;
+			}
+		}
+
+		return res;
+	}
+
+	Table rotateClockwise() const
+	{
+		Table res(*this);
+		assert(width == height);
+		
+		int fd = width;
+
+		for (int j = 0; j < fd; j++) {
+			for (int i = 0; i < fd; i++) {
+				res.vals[fd * i + (fd - 1 - j)] = vals[j * fd + i];
+			}
+		}
+
+		return res;
+	}
+
+	Table mirrorHorizontal() const
+	{
+		Table res(*this);
+
+		for (int j = 0; j < height; j++) {
+			for (int i = 0; i < width; i++) {
+				res.vals[j * width + i] = res.vals[j * width + (width - 1 - i)];
+			}
+		}
+
+		return res;
+	}
+
+	Table multiply(float priority_mul) const
+	{
+		Table res(*this);
+
+		for (int j = 0; j < height; j++) {
+			for (int i = 0; i < width; i++) {
+				res.vals[j * width + i] *= priority_mul;
+			}
+		}
+
+		return res;
+	}
+};
+
 class Lesson
 {
 public:
 	int field_w, field_h;
-	vector<float> position, priorities;
-	int movei, movej;
+	Table position, priorities;
+	Point move;
 
-	Lesson(vector<float> position, int field_w, int field_h, int movei, int movej, float priority) :
+	Lesson(Table position, int field_w, int field_h, Point move, float priority) :
 		field_w(field_w), field_h(field_h),
-		movei(movei), movej(movej),
-		position(position)
+		move(move), position(position), priorities(field_w, field_h)
 	{
 		for (int j = 0; j < field_h; j++) {
 			for (int i = 0; i < field_w; i++) {
-				priorities.push_back(i == movei && j == movej ? priority : 0.0);
+				priorities.vals.push_back(i == move.i && j == move.j ? priority : 0.0);
 			}
 		}
 	}
 
-	Lesson(vector<float> position, int field_w, int field_h, int movei, int movej, vector<float> priorities) :
+	Lesson(Table position, int field_w, int field_h, Point move, Table priorities) :
 		field_w(field_w), field_h(field_h),
-		movei(movei), movej(movej),
-		position(position), priorities(priorities)
+		move(move), position(position), priorities(priorities)
 	{
 
 	}
@@ -149,11 +242,7 @@ public:
 	{
 		Lesson res(*this);
 
-		for (int j = 0; j < field_h; j++) {
-			for (int i = 0; i < field_w; i++) {
-				res.position[j * field_w + i] *= -1;
-			}
-		}
+		res.position = position.inverse();
 
 		return res;
 	}
@@ -166,17 +255,9 @@ public:
 			throw runtime_error("Can't rotate a non-square field");
 		}
 
-		int fd = field_w;
-
-		for (int j = 0; j < fd; j++) {
-			for (int i = 0; i < fd; i++) {
-				res.position[fd * i + (fd - 1 - j)] = position[j * field_w + i];
-				res.priorities[fd * i + (fd - 1 - j)] = priorities[j * field_w + i];
-			}
-		}
-
-		res.movei = fd - 1 - movej;
-		res.movej = movei;
+		res.position = position.rotateClockwise();
+		res.priorities = priorities.rotateClockwise();
+		res.move = move.rotateClockwise();
 
 		return res;
 	}
@@ -185,15 +266,9 @@ public:
 	{
 		Lesson res(*this);
 
-		for (int j = 0; j < field_h; j++) {
-			for (int i = 0; i < field_w; i++) {
-				res.position[j * field_w + i] = res.position[j * field_w + (field_w - 1 - i)];
-				res.priorities[j * field_w + i] = res.priorities[j * field_w + (field_w - 1 - i)];
-			}
-		}
-
-		res.movei = field_w - 1 - movei;
-		res.movej = movej;
+		res.position = position.mirrorHorizontal();
+		res.priorities = priorities.mirrorHorizontal();
+		res.move = move.mirrorHorizontal();
 
 		return res;
 	}
@@ -202,53 +277,19 @@ public:
 	{
 		Lesson res(*this);
 
-		for (int j = 0; j < field_h; j++) {
-			for (int i = 0; i < field_w; i++) {
-				res.priorities[j * field_w + i] *= priority_mul;
-			}
-		}
+		res.priorities = priorities.multiply(priority_mul);
 
 		return res;
 	}
 
 };
 
-// mean-squared-error loss function for regression
-
-class mse_priorities {
-public:
-	static float f(const vec_t &y, const vec_t &t) {
-		assert(y.size() == t.size());
-		float d{ 0.0 };
-
-		for (size_t i = 0; i < y.size(); ++i)
-		{
-			d += t[i] * (y[i] - t[i]) * (y[i] - t[i]);
-		}
-
-		return d / static_cast<float>(y.size());
-	}
-
-	static vec_t df(const vec_t &y, const vec_t &t) {
-		assert(y.size() == t.size());
-		vec_t d(t.size());
-		float factor = float(2) / static_cast<float>(t.size());
-
-		for (size_t i = 0; i < y.size(); ++i)
-		{
-			d[i] = factor * t[i] * (y[i] - t[i]);
-		}
-
-		return d;
-	}
-};
-
-void makeMove(network<sequential> net, vector<float> field_data, int field_w, int field_h, int& movei, int& movej, int& victor)
+void makeMove(network<sequential> net, Table field_data, int field_w, int field_h, Point& move, int& victor)
 {
 	vec_t pos_item;
 	for (int j = 0; j < field_h; j++) {
 		for (int i = 0; i < field_w; i++) {
-			pos_item.push_back(field_data[j * field_w + i]);
+			pos_item.push_back(field_data.vals[j * field_w + i]);
 		}
 	}
 
@@ -260,7 +301,7 @@ void makeMove(network<sequential> net, vector<float> field_data, int field_w, in
 	do
 	{
 		occupied = false;
-		movei = -1; movej = -1;
+		move.i = -1; move.j = -1;
 		maxpriority = -1.0;
 		for (int j = 0; j < field_h; j++)
 		{
@@ -269,10 +310,10 @@ void makeMove(network<sequential> net, vector<float> field_data, int field_w, in
 				if (result[j * field_w + i] > maxpriority)
 				{
 					maxpriority = result[j * field_w + i];
-					movei = i;
-					movej = j;
+					move.i = i;
+					move.j = j;
 
-					if (abs(field_data[j * field_w + i]) > 0.5)
+					if (abs(field_data.vals[j * field_w + i]) > 0.5)
 					{
 						occupied = true;
 						result[j * field_w + i] = -1.0; // clearing this priority
@@ -327,7 +368,14 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 			}
 		}
 
-		usefulLessons.push_back(Lesson(position, field_w, field_h, movei, movej, priorities));
+		usefulLessons.push_back(
+			Lesson(
+				Table(position, field_w, field_h), 
+				field_w, field_h, 
+				Point(movei, movej, field_w, field_h), 
+				Table(priorities, field_w, field_h)
+			)
+		);
 	}
 	lessonsFile.close();
 
@@ -348,7 +396,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 		vec_t pos_item;
 		for (int j = 0; j < field_h; j++) {
 			for (int i = 0; i < field_w; i++) {
-				pos_item.push_back(usefulLessons[k].position[j * field_w + i]);
+				pos_item.push_back(usefulLessons[k].position.vals[j * field_w + i]);
 			}
 		}
 		train_input_data.push_back(pos_item);
@@ -356,7 +404,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 		vec_t pri_item;
 		for (int j = 0; j < field_h; j++) {
 			for (int i = 0; i < field_w; i++) {
-				pri_item.push_back(usefulLessons[k].priorities[j * field_w + i]);
+				pri_item.push_back(usefulLessons[k].priorities.vals[j * field_w + i]);
 			}
 		}
 		train_output_data.push_back(pri_item);
@@ -392,13 +440,14 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 		succeeded_tests = 0;
 		for (int i = 0; i < usefulLessons.size(); i++)
 		{
-			vector<float> field_data = usefulLessons[i].position;
+			Table field_data = usefulLessons[i].position;
 
-			int movei, movej, victor;
-			makeMove(net, field_data, field_w, field_h, movei, movej, victor);
+			Point move(0, 0, field_w, field_h);
+			int victor;
+			makeMove(net, field_data, field_w, field_h, move, victor);
 
-			if (movei == usefulLessons[i].movei &&
-				movej == usefulLessons[i].movej)
+			if (move.i == usefulLessons[i].move.i &&
+				move.j == usefulLessons[i].move.j)
 			{
 				succeeded_tests++;
 			}
@@ -462,10 +511,10 @@ int main(int argc, char** argv)
 
 	vector<Lesson> lessons[2];	// Each player's lessons
 
-	vector<float> field_data;
+	Table field_data(field_w, field_h);
 	for (int j = 0; j < field_h; j++) {
 		for (int i = 0; i < field_w; i++) {
-			field_data.push_back(0.0);
+			field_data.vals.push_back(0.0);
 		}
 	}
 
@@ -475,8 +524,8 @@ int main(int argc, char** argv)
 	int victor = -2;
 	do {
 		for (int pI = 0; pI < 2; pI++) {
-			printField(field_data, field_w, field_h);
-			float vic = checkVictory(field_data, field_w, field_h, vic_line_len);
+			printField(field_data.vals, field_w, field_h);
+			float vic = checkVictory(field_data.vals, field_w, field_h, vic_line_len);
 			if (vic > 0.5)
 			{
 				printf("Player X wins\n");
@@ -490,17 +539,13 @@ int main(int argc, char** argv)
 				break;
 			}
 
-			vector<float> field_data_me_him = field_data;
+			Table field_data_me_him = field_data;
 			if (userPlayerIndex != 1) {
 				// If the user plays "X", we inverse the field because "X" should mean "me"
-				for (int j = 0; j < field_h; j++) {
-					for (int i = 0; i < field_w; i++) {
-						field_data_me_him[j * field_w + i] = -field_data_me_him[j * field_w + i];
-					}
-				}
+				field_data_me_him = field_data_me_him.inverse();
 			}
 
-			int movei, movej;
+			Point move(0, 0, field_w, field_h);
 			if (pI == userPlayerIndex)
 			{
 				// Player move
@@ -509,21 +554,21 @@ int main(int argc, char** argv)
 					char x = getchar();
 					char y = getchar();
 					char c;  while ((c = getchar()) != '\n' && c != EOF) {}
-					movei = x - 'a';
-					movej = y - '1';
-				} while (movei >= field_w || movej > field_h || movei < 0 || movej < 0);
+					move.i = x - 'a';
+					move.j = y - '1';
+				} while (move.i >= field_w || move.j > field_h || move.i < 0 || move.j < 0);
 
 			}
 			else
 			{
 				// AI move
-				makeMove(net, field_data_me_him, field_w, field_h, movei, movej, victor);
+				makeMove(net, field_data_me_him, field_w, field_h, move, victor);
 			}
 
 			if (victor != -1) {
 				// If not draw
-				lessons[pI].push_back(Lesson(field_data_me_him, field_w, field_h, movei, movej, 1.0));
-				field_data[movej * field_w + movei] = playerVal(pI);
+				lessons[pI].push_back(Lesson(field_data_me_him, field_w, field_h, move, 1.0));
+				field_data.vals[move.j * field_w + move.i] = playerVal(pI);
 			}
 		}
 
@@ -586,16 +631,16 @@ int main(int argc, char** argv)
 		{
 			lessonsFile.write("L", 1);	// Magic for a lesson
 
-			lessonsFile.write((const char*) &(usefulLessons[k].movei), 4);
-			lessonsFile.write((const char*) &(usefulLessons[k].movej), 4);
+			lessonsFile.write((const char*) &(usefulLessons[k].move.i), 4);
+			lessonsFile.write((const char*) &(usefulLessons[k].move.j), 4);
 			for (int j = 0; j < field_h; j++) {
 				for (int i = 0; i < field_w; i++) {
-					lessonsFile.write((const char*) &(usefulLessons[k].position[j * field_w + i]), 4);
+					lessonsFile.write((const char*) &(usefulLessons[k].position.vals[j * field_w + i]), 4);
 				}
 			}
 			for (int j = 0; j < field_h; j++) {
 				for (int i = 0; i < field_w; i++) {
-					lessonsFile.write((const char*) &(usefulLessons[k].priorities[j * field_w + i]), 4);
+					lessonsFile.write((const char*) &(usefulLessons[k].priorities.vals[j * field_w + i]), 4);
 				}
 			}
 		}
