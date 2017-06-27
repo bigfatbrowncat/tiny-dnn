@@ -426,7 +426,7 @@ int main(int argc, char** argv)
 
 		int size = field_w * field_h;
 
-		int maps = 100;
+/*		int maps = 50;
 
 		net <<
 			layers::conv(field_w, field_h, 3, 1, maps) <<
@@ -434,6 +434,19 @@ int main(int argc, char** argv)
 			layers::fc(2 * maps, 2 * maps) << tanh_layer(2 * maps) <<
 			layers::fc(2 * maps, maps) << tanh_layer(maps) <<
 			layers::deconv(1, 1, 3, maps, 1);
+
+			420 of 736
+			*/
+		int maps = field_w * field_h * 2;
+
+		net <<
+			layers::conv(field_w, field_h, 3, 1, maps) <<
+			layers::fc(maps, 2 * maps) << tanh_layer(2 * maps) <<
+			layers::fc(2 * maps, 2 * maps) << tanh_layer(2 * maps) <<
+			layers::fc(2 * maps, maps) << tanh_layer(maps) <<
+			layers::deconv(1, 1, 3, maps, 1);
+
+
 	}
 
 	if (argc == 2 && strcmp(argv[1], "train-first") == 0)
