@@ -373,9 +373,12 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	//gradient_descent opt; opt.alpha = 0.75;
 	adam opt;
 	int succeeded_tests;
+
+	size_t epochs = 200;
+	loss = net.get_loss<mse>(train_input_data, train_output_data);
+
 	do
 	{
-		size_t epochs = 200;
 		net.fit<mse>(opt, train_input_data, train_output_data, batch_size, epochs);
 
 		double old_loss = loss;
@@ -401,9 +404,9 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 			}
 		}
 		
+		ee += epochs;
 		cout << "epoch " << ee << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << "; learned : " << succeeded_tests << " of " << usefulLessons.size() << endl;
 
-		ee+=epochs;
 	} while (/*succeeded_tests < usefulLessons.size()*/ abs(delta_loss_per_epoch) > mse_stop);
 }
 
@@ -435,7 +438,7 @@ int main(int argc, char** argv)
 
 	if (argc == 2 && strcmp(argv[1], "train-first") == 0)
 	{
-		train(field_w, field_h, net, 1e-5);
+		train(field_w, field_h, net, 1e-4);
 	}
 
 
@@ -469,6 +472,16 @@ int main(int argc, char** argv)
 				break;
 			}
 
+			vector<float> field_data_me_him = field_data;
+			if (userPlayerIndex != 1) {
+				// If the user plays "X", we inverse the field because "X" should mean "me"
+				for (int j = 0; j < field_h; j++) {
+					for (int i = 0; i < field_w; i++) {
+						field_data_me_him[j * field_w + i] = -field_data_me_him[j * field_w + i];
+					}
+				}
+			}
+
 			int movei, movej;
 			if (pI == userPlayerIndex)
 			{
@@ -486,13 +499,12 @@ int main(int argc, char** argv)
 			else
 			{
 				// AI move
-
-				makeMove(net, field_data, field_w, field_h, movei, movej, victor);
+				makeMove(net, field_data_me_him, field_w, field_h, movei, movej, victor);
 			}
 
 			if (victor != -1) {
 				// If not draw
-				lessons[pI].push_back(Lesson(field_data, field_w, field_h, movei, movej, 1.0));
+				lessons[pI].push_back(Lesson(field_data_me_him, field_w, field_h, movei, movej, 1.0));
 				field_data[movej * field_w + movei] = playerVal(pI);
 			}
 		}
@@ -507,6 +519,10 @@ int main(int argc, char** argv)
 		for (int k = lessons[victor].size() - 1; k >= 0; k--)
 		{
 			Lesson cur = lessons[victor][k].mulPriority(priority);
+			
+			// In the book 1 means "me" and -1 means "other player", not "X" and "O"
+			if (userPlayerIndex != 1) cur = cur.inverse();
+
 			usefulLessons.push_back(cur);
 			Lesson curr1 = cur.rotateClockwise();
 			usefulLessons.push_back(curr1);
@@ -569,7 +585,7 @@ int main(int argc, char** argv)
 
 		printf("%d lessons appended to the book\n", usefulLessons.size());
 
-		train(field_w, field_h, net, 1e-5);
+		train(field_w, field_h, net, 1e-4);
 
 		printf("Saving net...");
 		net.save("xoxonet.weights");
