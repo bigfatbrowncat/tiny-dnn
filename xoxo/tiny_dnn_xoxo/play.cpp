@@ -370,18 +370,19 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	
 	double delta_loss_per_epoch;
 	
-	gradient_descent opt; opt.alpha = 1.0;
+	//gradient_descent opt; opt.alpha = 0.75;
+	adam opt;
 	int succeeded_tests;
 	do
 	{
 		size_t epochs = 200;
-		net.fit<mse_priorities>(opt, train_input_data, train_output_data, batch_size, epochs);
+		net.fit<mse>(opt, train_input_data, train_output_data, batch_size, epochs);
 
 		double old_loss = loss;
-		loss = net.get_loss<mse_priorities>(train_input_data, train_output_data);
+		loss = net.get_loss<mse>(train_input_data, train_output_data);
 
 		delta_loss_per_epoch = (old_loss - loss) / epochs;
-		if (delta_loss_per_epoch < 0) opt.alpha /= 1.5;
+		//if (delta_loss_per_epoch < 0) opt.alpha /= 1.5;
 
 		// Scoring
 
@@ -403,7 +404,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 		cout << "epoch " << ee << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << "; learned : " << succeeded_tests << " of " << usefulLessons.size() << endl;
 
 		ee+=epochs;
-	} while (succeeded_tests < usefulLessons.size()  /*abs(loss) > mse_stop*/);
+	} while (/*succeeded_tests < usefulLessons.size()*/ abs(delta_loss_per_epoch) > mse_stop);
 }
 
 int main(int argc, char** argv)
@@ -424,15 +425,17 @@ int main(int argc, char** argv)
 
 		int maps = 100;
 
-		net << layers::conv(field_w, field_h, 3, 1, maps) << 
-			layers::fc(maps, maps) << tanh_layer(maps) <<
-			layers::fc(maps, maps) << tanh_layer(maps) <<
+		net <<
+			layers::conv(field_w, field_h, 3, 1, maps) <<
+			layers::fc(maps, 2 * maps) << tanh_layer(2 * maps) <<
+			layers::fc(2 * maps, 2 * maps) << tanh_layer(2 * maps) <<
+			layers::fc(2 * maps, maps) << tanh_layer(maps) <<
 			layers::deconv(1, 1, 3, maps, 1);
 	}
 
 	if (argc == 2 && strcmp(argv[1], "train-first") == 0)
 	{
-		train(field_w, field_h, net, 0.1);
+		train(field_w, field_h, net, 1e-5);
 	}
 
 
@@ -521,7 +524,7 @@ int main(int argc, char** argv)
 			Lesson curmr3 = curmr2.rotateClockwise();
 			usefulLessons.push_back(curmr3);
 
-			Lesson curi = cur.inverse();
+			Lesson curi = cur.inverse().mulPriority(0.75);		// Defense is less prioritized than attack
 			usefulLessons.push_back(curi);
 			Lesson curir1 = curi.rotateClockwise();
 			usefulLessons.push_back(curir1);
@@ -566,7 +569,7 @@ int main(int argc, char** argv)
 
 		printf("%d lessons appended to the book\n", usefulLessons.size());
 
-		train(field_w, field_h, net, 0.1);
+		train(field_w, field_h, net, 1e-5);
 
 		printf("Saving net...");
 		net.save("xoxonet.weights");
