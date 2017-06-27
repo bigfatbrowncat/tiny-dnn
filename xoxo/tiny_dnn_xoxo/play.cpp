@@ -163,7 +163,7 @@ public:
 		Lesson res(*this);
 		if (field_w != field_h)
 		{
-			throw exception("Can't rotate a non-square field");
+			throw runtime_error("Can't rotate a non-square field");
 		}
 
 		int fd = field_w;
@@ -412,7 +412,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 
 int main(int argc, char** argv)
 {
-	const int field_w = 3, field_h = 3, vic_line_len = 3;
+	const int field_w = 7, field_h = 7, vic_line_len = 4;
 
 	network<sequential> net;
 	try
@@ -437,14 +437,19 @@ int main(int argc, char** argv)
 
 			420 of 736
 			*/
-		int maps = field_w * field_h * 2;
+
+		int conv_out_w = field_w - vic_line_len + 1;
+		int conv_out_h = field_h - vic_line_len + 1;
+		int conv_out = conv_out_w * conv_out_h;
+
+		int maps = conv_out_w * conv_out_h * 2;	// from the ceiling
 
 		net <<
-			layers::conv(field_w, field_h, 3, 1, maps) <<
-			layers::fc(maps, 2 * maps) << tanh_layer(2 * maps) <<
-			layers::fc(2 * maps, 2 * maps) << tanh_layer(2 * maps) <<
-			layers::fc(2 * maps, maps) << tanh_layer(maps) <<
-			layers::deconv(1, 1, 3, maps, 1);
+			layers::conv(field_w, field_h, vic_line_len, 1, maps) <<
+			layers::fc(    conv_out * maps, 2 * conv_out * maps) << tanh_layer(2 * conv_out * maps) <<
+			layers::fc(2 * conv_out * maps, 2 * conv_out * maps) << tanh_layer(2 * conv_out * maps) <<
+			layers::fc(2 * conv_out * maps,     conv_out * maps) << tanh_layer(    conv_out * maps) <<
+			layers::deconv(conv_out_w, conv_out_h, vic_line_len, maps, 1);
 
 
 	}
