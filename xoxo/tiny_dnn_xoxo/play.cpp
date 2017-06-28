@@ -213,6 +213,21 @@ public:
 	}
 };
 
+Table max(Table one, Table two)
+{
+	assert(one.width == two.width);
+	assert(one.height == two.height);
+
+	vector<float> rmax;
+	rmax.resize(one.width * one.height);
+	for (int j = 0; j < one.height; j++) {
+		for (int i = 0; i < one.width; i++) {
+			rmax[j * one.width + i] = fmaxf(one.vals[j * one.width + i], two.vals[j * one.width + i]);
+		}
+	}
+	return Table(rmax, one.width, one.height);
+}
+
 class Lesson
 {
 public:
@@ -284,16 +299,52 @@ public:
 
 };
 
-void makeMove(network<sequential> net, Table field_data, int field_w, int field_h, Point& move, int& victor)
+Table score(network<sequential> net, Table field)
 {
+	int field_w = field.width;
+	int field_h = field.height;
+
 	vec_t pos_item;
 	for (int j = 0; j < field_h; j++) {
 		for (int i = 0; i < field_w; i++) {
-			pos_item.push_back(field_data.vals[j * field_w + i]);
+			pos_item.push_back(field.vals[j * field_w + i]);
 		}
 	}
 
-	vec_t result = net.predict(pos_item);
+	vec_t prior = net.predict(pos_item);
+
+	vector<float> res;
+	for (int j = 0; j < field_h; j++) {
+		for (int i = 0; i < field_w; i++) {
+			res.push_back(prior[j * field_w + i]);
+		}
+	}
+	return Table(res, field_w, field_h);
+}
+
+void makeMove(network<sequential> net, Table field_data, Point& move, int& victor)
+{
+	Table ai_prior_0_0 = score(net, field_data);
+	
+	Table field_90 = field_data.rotateClockwise();
+	Table ai_prior_1_90 = score(net, field_90);
+
+	Table field_180 = field_90.rotateClockwise();
+	Table ai_prior_1_180 = ai_prior_1_90.rotateClockwise();
+	Table ai_prior_2_180 = score(net, field_180);
+
+	Table field_270 = field_180.rotateClockwise();
+	Table ai_prior_1_270 = ai_prior_1_180.rotateClockwise();
+	Table ai_prior_2_270 = ai_prior_2_180.rotateClockwise();
+	Table ai_prior_3_270 = score(net, field_270);
+
+	Table ai_prior_1_0 = ai_prior_1_270.rotateClockwise();
+	Table ai_prior_2_0 = ai_prior_2_270.rotateClockwise();
+	Table ai_prior_3_0 = ai_prior_3_270.rotateClockwise();
+
+	Table ai_tmp1 = max(ai_prior_0_0, ai_prior_1_0);
+	Table ai_tmp2 = max(ai_tmp1, ai_prior_2_0);
+	Table ai_prior_max = max(ai_tmp2, ai_prior_3_0);
 
 	// Searching for the maximum
 	bool occupied;
@@ -303,20 +354,20 @@ void makeMove(network<sequential> net, Table field_data, int field_w, int field_
 		occupied = false;
 		move.i = -1; move.j = -1;
 		maxpriority = -1.0;
-		for (int j = 0; j < field_h; j++)
+		for (int j = 0; j < field_data.height; j++)
 		{
-			for (int i = 0; i < field_w; i++)
+			for (int i = 0; i < field_data.width; i++)
 			{
-				if (result[j * field_w + i] > maxpriority)
+				if (ai_prior_max.vals[j * field_data.width + i] > maxpriority)
 				{
-					maxpriority = result[j * field_w + i];
+					maxpriority = ai_prior_max.vals[j * field_data.width + i];
 					move.i = i;
 					move.j = j;
 
-					if (abs(field_data.vals[j * field_w + i]) > 0.5)
+					if (abs(field_data.vals[j * field_data.width + i]) > 0.5)
 					{
 						occupied = true;
-						result[j * field_w + i] = -1.0; // clearing this priority
+						ai_prior_max.vals[j * field_data.width + i] = -1.0; // clearing this priority
 						break;
 					}
 
@@ -413,7 +464,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 
 	printf("Training...\n");
 
-	size_t batch_size = training_batch;
+	size_t batch_size = 10;//training_batch;
 	double loss = 0; int ee = 0;
 	
 	double delta_loss_per_epoch;
@@ -444,7 +495,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 
 			Point move(0, 0, field_w, field_h);
 			int victor;
-			makeMove(net, field_data, field_w, field_h, move, victor);
+			makeMove(net, field_data, move, victor);
 
 			if (move.i == usefulLessons[i].move.i &&
 				move.j == usefulLessons[i].move.j)
@@ -461,6 +512,8 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 
 int main(int argc, char** argv)
 {
+	std::cout << "NN backend: " << core::default_engine() << std::endl;
+
 	const int field_w = 7, field_h = 7, vic_line_len = 4;
 
 	network<sequential> net;
@@ -491,21 +544,22 @@ int main(int argc, char** argv)
 		int conv_out_h = field_h - vic_line_len + 1;
 		int conv_out = conv_out_w * conv_out_h;
 
-		int maps = conv_out_w * conv_out_h * 2;	// from the ceiling
+		int maps = vic_line_len * vic_line_len * 2;	// from the ceiling
 
-		net <<
-			layers::conv(field_w, field_h, vic_line_len, 1, maps) <<
-			layers::fc(    conv_out * maps, 2 * conv_out * maps) << tanh_layer(2 * conv_out * maps) <<
-			layers::fc(2 * conv_out * maps, 2 * conv_out * maps) << tanh_layer(2 * conv_out * maps) <<
-			layers::fc(2 * conv_out * maps,     conv_out * maps) << tanh_layer(    conv_out * maps) <<
-			layers::deconv(conv_out_w, conv_out_h, vic_line_len, maps, 1);
+		net << layers::conv(field_w, field_h, vic_line_len, 1, maps) <<
+		       layers::fc(    conv_out * maps, 2 * conv_out * maps) << tanh_layer(2 * conv_out * maps) <<
+		       layers::fc(2 * conv_out * maps, 2 * conv_out * maps) << tanh_layer(2 * conv_out * maps) <<
+		       layers::fc(2 * conv_out * maps, 2 * conv_out * maps) << tanh_layer(2 * conv_out * maps) <<
+		       layers::fc(2 * conv_out * maps, 2 * conv_out * maps) << tanh_layer(2 * conv_out * maps) <<
+		       layers::fc(2 * conv_out * maps,     conv_out * maps) << tanh_layer(    conv_out * maps) <<
+		       layers::deconv(conv_out_w, conv_out_h, vic_line_len, maps, 1);
 
 
 	}
 
 	if (argc == 2 && strcmp(argv[1], "train-first") == 0)
 	{
-		train(field_w, field_h, net, 1e-4);
+		train(field_w, field_h, net, 1e-5);
 	}
 
 
@@ -562,7 +616,7 @@ int main(int argc, char** argv)
 			else
 			{
 				// AI move
-				makeMove(net, field_data_me_him, field_w, field_h, move, victor);
+				makeMove(net, field_data_me_him, move, victor);
 			}
 
 			if (victor != -1) {
@@ -587,7 +641,8 @@ int main(int argc, char** argv)
 			if (userPlayerIndex != 1) cur = cur.inverse();
 
 			usefulLessons.push_back(cur);
-			Lesson curr1 = cur.rotateClockwise();
+
+			/*Lesson curr1 = cur.rotateClockwise();
 			usefulLessons.push_back(curr1);
 			Lesson curr2 = curr1.rotateClockwise();
 			usefulLessons.push_back(curr2);
@@ -601,11 +656,11 @@ int main(int argc, char** argv)
 			Lesson curmr2 = curmr1.rotateClockwise();
 			usefulLessons.push_back(curmr2);
 			Lesson curmr3 = curmr2.rotateClockwise();
-			usefulLessons.push_back(curmr3);
+			usefulLessons.push_back(curmr3);*/
 
 			Lesson curi = cur.inverse().mulPriority(0.75);		// Defense is less prioritized than attack
 			usefulLessons.push_back(curi);
-			Lesson curir1 = curi.rotateClockwise();
+			/*Lesson curir1 = curi.rotateClockwise();
 			usefulLessons.push_back(curir1);
 			Lesson curir2 = curir1.rotateClockwise();
 			usefulLessons.push_back(curir2);
@@ -619,7 +674,7 @@ int main(int argc, char** argv)
 			Lesson curimr2 = curimr1.rotateClockwise();
 			usefulLessons.push_back(curimr2);
 			Lesson curimr3 = curimr2.rotateClockwise();
-			usefulLessons.push_back(curimr3);
+			usefulLessons.push_back(curimr3);*/
 			
 			priority /= 2.0;
 		}
@@ -648,7 +703,7 @@ int main(int argc, char** argv)
 
 		printf("%d lessons appended to the book\n", usefulLessons.size());
 
-		train(field_w, field_h, net, 1e-4);
+		train(field_w, field_h, net, 1e-5);
 
 		printf("Saving net...");
 		net.save("xoxonet.weights");
