@@ -17,6 +17,4 @@ endif()
 add_executable(tiny_dnn_xoxo_play tiny_dnn_xoxo/play.cpp ${tiny_dnn_headers})
 target_link_libraries(tiny_dnn_xoxo_play
     ${project_library_target_name} ${REQUIRED_LIBRARIES})
-add_executable(tiny_dnn_xoxo_train tiny_dnn_xoxo/train.cpp ${tiny_dnn_headers})
-target_link_libraries(tiny_dnn_xoxo_train
-    ${project_library_target_name} ${REQUIRED_LIBRARIES})
+

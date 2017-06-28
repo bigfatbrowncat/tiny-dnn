@@ -464,7 +464,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 
 	printf("Training...\n");
 
-	size_t batch_size = 10;//training_batch;
+	size_t batch_size = std::min((int)train_input_data.size(), 20);//training_batch;
 	double loss = 0; int ee = 0;
 	
 	double delta_loss_per_epoch;
@@ -544,14 +544,15 @@ int main(int argc, char** argv)
 		int conv_out_h = field_h - vic_line_len + 1;
 		int conv_out = conv_out_w * conv_out_h;
 
-		int maps = vic_line_len * vic_line_len * 2;	// from the ceiling
+		int maps = vic_line_len * 3;	// from the ceiling
 
 		net << layers::conv(field_w, field_h, vic_line_len, 1, maps) <<
-		       layers::fc(    conv_out * maps, 2 * conv_out * maps) << tanh_layer(2 * conv_out * maps) <<
-		       layers::fc(2 * conv_out * maps, 2 * conv_out * maps) << tanh_layer(2 * conv_out * maps) <<
-		       layers::fc(2 * conv_out * maps, 2 * conv_out * maps) << tanh_layer(2 * conv_out * maps) <<
-		       layers::fc(2 * conv_out * maps, 2 * conv_out * maps) << tanh_layer(2 * conv_out * maps) <<
-		       layers::fc(2 * conv_out * maps,     conv_out * maps) << tanh_layer(    conv_out * maps) <<
+		       layers::fc(conv_out * maps, conv_out * maps) << tanh_layer(conv_out * maps) <<
+		       layers::fc(conv_out * maps, conv_out * maps*2) << tanh_layer(conv_out * maps*2) <<
+		       layers::fc(conv_out * maps*2, conv_out * maps*3) << tanh_layer(conv_out * maps*3) <<
+//		       layers::fc(conv_out * maps*3, conv_out * maps*3) << tanh_layer(conv_out * maps*3) <<
+		       layers::fc(conv_out * maps*3, conv_out * maps*2) << tanh_layer(conv_out * maps*2) <<
+		       layers::fc(conv_out * maps*2, conv_out * maps) << tanh_layer(conv_out * maps) <<
 		       layers::deconv(conv_out_w, conv_out_h, vic_line_len, maps, 1);
 
 
@@ -559,7 +560,7 @@ int main(int argc, char** argv)
 
 	if (argc == 2 && strcmp(argv[1], "train-first") == 0)
 	{
-		train(field_w, field_h, net, 1e-5);
+		train(field_w, field_h, net, 1e-6);
 	}
 
 
@@ -703,7 +704,7 @@ int main(int argc, char** argv)
 
 		printf("%d lessons appended to the book\n", usefulLessons.size());
 
-		train(field_w, field_h, net, 1e-5);
+		train(field_w, field_h, net, 1e-6);
 
 		printf("Saving net...");
 		net.save("xoxonet.weights");
