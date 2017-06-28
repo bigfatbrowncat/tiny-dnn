@@ -322,29 +322,36 @@ Table score(network<sequential> net, Table field)
 	return Table(res, field_w, field_h);
 }
 
-void makeMove(network<sequential> net, Table field_data, Point& move, int& victor)
+void makeMove(network<sequential> net, Table field_data, Point& move, int& victor, bool rotate = true)
 {
 	Table ai_prior_0_0 = score(net, field_data);
+	Table ai_prior(field_data.width, field_data.height);
+	if (rotate) {
+
+		Table field_90 = field_data.rotateClockwise();
+		Table ai_prior_1_90 = score(net, field_90);
+
+		Table field_180 = field_90.rotateClockwise();
+		Table ai_prior_1_180 = ai_prior_1_90.rotateClockwise();
+		Table ai_prior_2_180 = score(net, field_180);
+
+		Table field_270 = field_180.rotateClockwise();
+		Table ai_prior_1_270 = ai_prior_1_180.rotateClockwise();
+		Table ai_prior_2_270 = ai_prior_2_180.rotateClockwise();
+		Table ai_prior_3_270 = score(net, field_270);
+
+		Table ai_prior_1_0 = ai_prior_1_270.rotateClockwise();
+		Table ai_prior_2_0 = ai_prior_2_270.rotateClockwise();
+		Table ai_prior_3_0 = ai_prior_3_270.rotateClockwise();
 	
-	Table field_90 = field_data.rotateClockwise();
-	Table ai_prior_1_90 = score(net, field_90);
-
-	Table field_180 = field_90.rotateClockwise();
-	Table ai_prior_1_180 = ai_prior_1_90.rotateClockwise();
-	Table ai_prior_2_180 = score(net, field_180);
-
-	Table field_270 = field_180.rotateClockwise();
-	Table ai_prior_1_270 = ai_prior_1_180.rotateClockwise();
-	Table ai_prior_2_270 = ai_prior_2_180.rotateClockwise();
-	Table ai_prior_3_270 = score(net, field_270);
-
-	Table ai_prior_1_0 = ai_prior_1_270.rotateClockwise();
-	Table ai_prior_2_0 = ai_prior_2_270.rotateClockwise();
-	Table ai_prior_3_0 = ai_prior_3_270.rotateClockwise();
-
-	Table ai_tmp1 = max(ai_prior_0_0, ai_prior_1_0);
-	Table ai_tmp2 = max(ai_tmp1, ai_prior_2_0);
-	Table ai_prior_max = max(ai_tmp2, ai_prior_3_0);
+		Table ai_tmp1 = max(ai_prior_0_0, ai_prior_1_0);
+		Table ai_tmp2 = max(ai_tmp1, ai_prior_2_0);
+		ai_prior = max(ai_tmp2, ai_prior_3_0);
+	}
+	else
+	{
+		ai_prior = ai_prior_0_0;
+	}
 
 	// Searching for the maximum
 	bool occupied;
@@ -358,16 +365,16 @@ void makeMove(network<sequential> net, Table field_data, Point& move, int& victo
 		{
 			for (int i = 0; i < field_data.width; i++)
 			{
-				if (ai_prior_max.vals[j * field_data.width + i] > maxpriority)
+				if (ai_prior.vals[j * field_data.width + i] > maxpriority)
 				{
-					maxpriority = ai_prior_max.vals[j * field_data.width + i];
+					maxpriority = ai_prior.vals[j * field_data.width + i];
 					move.i = i;
 					move.j = j;
 
 					if (abs(field_data.vals[j * field_data.width + i]) > 0.5)
 					{
 						occupied = true;
-						ai_prior_max.vals[j * field_data.width + i] = -1.0; // clearing this priority
+						ai_prior.vals[j * field_data.width + i] = -1.0; // clearing this priority
 						break;
 					}
 
@@ -427,6 +434,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 				Table(priorities, field_w, field_h)
 			)
 		);
+
 	}
 	lessonsFile.close();
 
@@ -470,7 +478,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	double delta_loss_per_epoch;
 	
 	//gradient_descent opt; opt.alpha = 0.75;
-	adam opt;
+	adam opt; opt.alpha /= 10;
 	int succeeded_tests;
 
 	size_t epochs = 200;
@@ -495,19 +503,20 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 
 			Point move(0, 0, field_w, field_h);
 			int victor;
-			makeMove(net, field_data, move, victor);
+			makeMove(net, field_data, move, victor, false);
 
 			if (move.i == usefulLessons[i].move.i &&
 				move.j == usefulLessons[i].move.j)
 			{
 				succeeded_tests++;
+				//printField(usefulLessons[i].position.vals,usefulLessons[i].position.width, usefulLessons[i].position.height);
 			}
 		}
 		
 		ee += epochs;
 		cout << "epoch " << ee << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << "; learned : " << succeeded_tests << " of " << usefulLessons.size() << endl;
 
-	} while (/*succeeded_tests < usefulLessons.size()*/ abs(delta_loss_per_epoch) > mse_stop);
+	} while (/*succeeded_tests < usefulLessons.size()*/ delta_loss_per_epoch > mse_stop || delta_loss_per_epoch < 0);
 }
 
 int main(int argc, char** argv)
@@ -540,21 +549,42 @@ int main(int argc, char** argv)
 			420 of 736
 			*/
 
-		int conv_out_w = field_w - vic_line_len + 1;
-		int conv_out_h = field_h - vic_line_len + 1;
-		int conv_out = conv_out_w * conv_out_h;
+		int conv_kernel = 2;
 
-		int maps = vic_line_len * vic_line_len;	// from the ceiling
+		int conv1_out_w = field_w - conv_kernel + 1;
+		int conv1_out_h = field_h - conv_kernel + 1;
+		int conv1_out = conv1_out_w * conv1_out_h;
 
-		net << layers::conv(field_w, field_h, vic_line_len, 1, maps) <<
-		       layers::fc(conv_out * maps, conv_out * maps) << tanh_layer(conv_out * maps) <<
-		       layers::fc(conv_out * maps, conv_out * maps*2) << tanh_layer(conv_out * maps*2) <<
-		       layers::fc(conv_out * maps*2, conv_out * maps*2) << tanh_layer(conv_out * maps*2) <<
-//		       layers::fc(conv_out * maps*2, conv_out * maps*3) << tanh_layer(conv_out * maps*3) <<
-//		       layers::fc(conv_out * maps*3, conv_out * maps*3) << tanh_layer(conv_out * maps*3) <<
-//		       layers::fc(conv_out * maps*3, conv_out * maps*2) << tanh_layer(conv_out * maps*2) <<
-		       layers::fc(conv_out * maps*2, conv_out * maps) << tanh_layer(conv_out * maps) <<
-		       layers::deconv(conv_out_w, conv_out_h, vic_line_len, maps, 1);
+		int conv2_out_w = conv1_out_w - conv_kernel + 1;
+		int conv2_out_h = conv1_out_h - conv_kernel + 1;
+		int conv2_out = conv2_out_w * conv2_out_h;
+
+		int maps = conv_kernel * conv_kernel;	// from the ceiling
+
+		int maps2 = maps * maps;	// from the ceiling
+
+		net << layers::conv(field_w, field_h, conv_kernel, 1, maps) <<
+
+		       layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+		       layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+		       layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+		       layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+
+		       layers::conv(conv1_out_w, conv1_out_h, conv_kernel, maps, maps2) <<
+
+		       layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+		       layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+		       layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+		       layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+
+			   layers::deconv(conv2_out_w, conv2_out_h, conv_kernel, maps2, maps) <<
+
+		       layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+		       layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+		       layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+		       layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+
+			   layers::deconv(conv1_out_w, conv1_out_h, conv_kernel, maps, 1);
 
 
 	}
