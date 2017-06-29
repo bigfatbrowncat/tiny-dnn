@@ -599,7 +599,7 @@ int main(int argc, char** argv)
 
 		       layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 //		       layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
-		       layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+//		       layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 		       layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 
 			   layers::deconv(conv2_out_w, conv2_out_h, conv_kernel, maps2, maps) <<
@@ -715,7 +715,7 @@ int main(int argc, char** argv)
 			Lesson curmr3 = curmr2.rotateClockwise();
 			usefulLessons.push_back(curmr3);*/
 
-			Lesson curi = cur.inverse().mulPriority(0.75);		// Defense is less prioritized than attack
+			Lesson curi = cur.inverse().mulPriority(0.95);		// Defense is less prioritized than attack
 			usefulLessons.push_back(curi);
 			/*Lesson curir1 = curi.rotateClockwise();
 			usefulLessons.push_back(curir1);
@@ -733,7 +733,7 @@ int main(int argc, char** argv)
 			Lesson curimr3 = curimr2.rotateClockwise();
 			usefulLessons.push_back(curimr3);*/
 			
-			priority /= 2.0;
+			priority /= 1.5;
 		}
 
 		// Saving useful lessons to file
