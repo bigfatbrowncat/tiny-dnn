@@ -478,7 +478,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	double delta_loss_per_epoch;
 	
 	//gradient_descent opt; opt.alpha = 0.75;
-	adam opt; opt.alpha /= 10;
+	adam opt; opt.alpha /= 5;
 	int succeeded_tests;
 
 	size_t epochs = 200;
@@ -492,7 +492,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 		loss = net.get_loss<mse>(train_input_data, train_output_data);
 
 		delta_loss_per_epoch = (old_loss - loss) / epochs;
-		//if (delta_loss_per_epoch < 0) opt.alpha /= 1.5;
+		if (delta_loss_per_epoch < 0) opt.alpha /= 2;
 
 		// Scoring
 
@@ -514,7 +514,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 		}
 		
 		ee += epochs;
-		cout << "epoch " << ee << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << "; learned : " << succeeded_tests << " of " << usefulLessons.size() << endl;
+		cout << "epoch " << ee << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << "; alpha=" << opt.alpha << "; learned: " << succeeded_tests << " of " << usefulLessons.size() << "(" << (int)(succeeded_tests * 100 / usefulLessons.size()) << "%)" << endl;
 
 	} while (/*succeeded_tests < usefulLessons.size()*/ delta_loss_per_epoch > mse_stop || delta_loss_per_epoch < 0);
 }
@@ -563,6 +563,31 @@ int main(int argc, char** argv)
 
 		int maps2 = maps * maps;	// from the ceiling
 
+		/*net << layers::conv(field_w, field_h, conv_kernel, 1, maps) <<
+
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+
+			layers::conv(conv1_out_w, conv1_out_h, conv_kernel, maps, maps2) <<
+
+			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+
+			layers::deconv(conv2_out_w, conv2_out_h, conv_kernel, maps2, maps) <<
+
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+
+			layers::deconv(conv1_out_w, conv1_out_h, conv_kernel, maps, 1);
+		
+		265 of 328 */
+
 		net << layers::conv(field_w, field_h, conv_kernel, 1, maps) <<
 
 		       layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
@@ -573,7 +598,7 @@ int main(int argc, char** argv)
 		       layers::conv(conv1_out_w, conv1_out_h, conv_kernel, maps, maps2) <<
 
 		       layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
-		       layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+//		       layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 		       layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 		       layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 
