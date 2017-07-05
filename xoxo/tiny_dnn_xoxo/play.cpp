@@ -24,10 +24,10 @@ void printField(vector<float> field_data, int field_w, int field_h) {
 		for (int i = 0; i < field_w; i++)
 		{
 
-			if (field_data[j * field_w + i] > 0.5) {
+			if (field_data[(j * field_w + i) * 2 + 0] > 0.5) {
 				printf(" X");
 			}
-			else if (field_data[j * field_w + i] < -0.5)
+			else if (field_data[(j * field_w + i) * 2 + 1] > 0.5)
 			{
 				printf(" O");
 			}
@@ -43,17 +43,29 @@ void printField(vector<float> field_data, int field_w, int field_h) {
 
 }
 
-bool playerCond(int pI, float val) {
-	if (pI == 0 /*X*/) return val > 0.5;
-	else if (pI == 1 /*O*/) return val < -0.5;
-	else throw 0;
+void printPriors(vector<float> field_data, int field_w, int field_h)
+{
+	for (int j = 0; j < field_h; j++)
+	{
+		for (int i = 0; i < field_w; i++)
+		{
+			printf("%.2f ", field_data[j * field_w + i]);
+		}
+		printf("\n");
+	}
+	printf("\n");
 }
 
-float playerVal(int pI) {
-	if (pI == 0 /*X*/) return 1.0;
-	else if (pI == 1 /*O*/) return -1.0;
-	else throw 0;
+
+bool playerCond(int pI, float* val) {
+	return val[pI] > 0.5;
 }
+
+//float playerVal(int pI) {
+//	if (pI == 0 /*X*/) return 1.0;
+//	else if (pI == 1 /*O*/) return -1.0;
+//	else throw 0;
+//}
 
 char playerSymbol(int pI) {
 	if (pI == 0 /*X*/) return 'X';
@@ -61,7 +73,7 @@ char playerSymbol(int pI) {
 	else throw 0;
 }
 
-float checkVictory(vector<float> field_data, int field_w, int field_h, int line_len) {
+int checkVictory(vector<float> field_data, int field_w, int field_h, int line_len) {
 	for (int j = 0; j < field_h + line_len - 1; j++) {
 		for (int i = 0; i < field_w + line_len - 1; i++) {
 			int i1 = i % field_w;
@@ -71,51 +83,51 @@ float checkVictory(vector<float> field_data, int field_w, int field_h, int line_
 			for (int pI = 0; pI < 2; pI++) {
 				int cnt;
 				// Checking player victory
-				if (playerCond(pI, field_data[j1 * field_w + i1])) {
+				if (playerCond(pI, &field_data[(j1 * field_w + i1) * 2])) {
 
 					// Right
 					cnt = 1;
 					for (int p = 1; p < line_len; p++) {
 						int i2 = (i + p) % field_w;
-						if (playerCond(pI, field_data[j1 * field_w + i2])) cnt++;
+						if (playerCond(pI, &field_data[(j1 * field_w + i2) * 2])) cnt++;
 					}
 					if (cnt == line_len)
-						return playerVal(pI);
+						return pI;
 
 					// Down
 					cnt = 1;
 					for (int q = 1; q < line_len; q++) {
 						int j2 = (j + q) % field_h;
-						if (playerCond(pI, field_data[j2 * field_w + i1])) cnt++;
+						if (playerCond(pI, &field_data[(j2 * field_w + i1) * 2])) cnt++;
 					}
 					if (cnt == line_len) 
-						return playerVal(pI);
+						return pI;
 
 					// Right-down
 					cnt = 1;
 					for (int pq = 1; pq < line_len; pq++) {
 						int i2 = (i + pq) % field_w;
 						int j2 = (j + pq) % field_h;
-						if (playerCond(pI, field_data[j2 * field_w + i2])) cnt++;
+						if (playerCond(pI, &field_data[(j2 * field_w + i2) * 2])) cnt++;
 					}
 					if (cnt == line_len)
-						return playerVal(pI);
+						return pI;
 
 					// Left-down
 					cnt = 1;
 					for (int pq = 1; pq < line_len; pq++) {
 						int i2 = (i - pq + field_w) % field_w;
 						int j2 = (j + pq) % field_h;
-						if (playerCond(pI, field_data[j2 * field_w + i2])) cnt++;
+						if (playerCond(pI, &field_data[(j2 * field_w + i2) * 2])) cnt++;
 					}
 					if (cnt == line_len)
-						return playerVal(pI);
+						return pI;
 				}
 			}
 
 		}
 	}
-	return 0.0; // No victory found
+	return -1; // No victory found
 }
 
 class Point {
@@ -163,13 +175,15 @@ public:
 	Table(vector<float> vals, int width, int height) : vals(vals), width(width), height(height) { }
 	Table(int width, int height) : width(width), height(height) { }
 
-	Table inverse() const
+	Table inverseChannels() const
 	{
 		Table res(*this);
 
 		for (int j = 0; j < height; j++) {
 			for (int i = 0; i < width; i++) {
-				res.vals[j * width + i] *= -1;
+				float tmp = res.vals[(j * width + i) * 2 + 0];
+				res.vals[(j * width + i) * 2 + 0] = res.vals[(j * width + i) * 2 + 1];
+				res.vals[(j * width + i) * 2 + 1] = tmp;
 			}
 		}
 
@@ -185,7 +199,8 @@ public:
 
 		for (int j = 0; j < fd; j++) {
 			for (int i = 0; i < fd; i++) {
-				res.vals[fd * i + (fd - 1 - j)] = vals[j * fd + i];
+				res.vals[(fd * i + (fd - 1 - j)) * 2 + 0] = vals[(j * fd + i) * 2 + 0];
+				res.vals[(fd * i + (fd - 1 - j)) * 2 + 1] = vals[(j * fd + i) * 2 + 1];
 			}
 		}
 
@@ -198,7 +213,8 @@ public:
 
 		for (int j = 0; j < height; j++) {
 			for (int i = 0; i < width; i++) {
-				res.vals[j * width + i] = vals[j * width + (width - 1 - i)];
+				res.vals[(j * width + i) * 2 + 0] = vals[(j * width + (width - 1 - i)) * 2 + 0];
+				res.vals[(j * width + i) * 2 + 1] = vals[(j * width + (width - 1 - i)) * 2 + 1];
 			}
 		}
 
@@ -211,7 +227,8 @@ public:
 
 		for (int j = 0; j < height; j++) {
 			for (int i = 0; i < width; i++) {
-				res.vals[j * width + i] *= priority_mul;
+				res.vals[(j * width + i) * 2 + 0] *= priority_mul;
+				res.vals[(j * width + i) * 2 + 1] *= priority_mul;
 			}
 		}
 
@@ -228,7 +245,8 @@ public:
 				int i2 = (i + dx + width) % width;
 				int j2 = (j + dy + height) % height;
 
-				res.vals[j2 * width + i2] = vals[j * width + i];
+				res.vals[(j2 * width + i2) * 2 + 0] = vals[(j * width + i) * 2 + 0];
+				res.vals[(j2 * width + i2) * 2 + 1] = vals[(j * width + i) * 2 + 1];
 			}
 		}
 
@@ -236,7 +254,7 @@ public:
 	}
 };
 
-Table max(Table one, Table two)
+/*Table max(Table one, Table two)
 {
 	assert(one.width == two.width);
 	assert(one.height == two.height);
@@ -249,7 +267,7 @@ Table max(Table one, Table two)
 		}
 	}
 	return Table(rmax, one.width, one.height);
-}
+}*/
 
 class Lesson
 {
@@ -276,17 +294,17 @@ public:
 	{
 	}
 
-	Lesson(Table position, int field_w, int field_h, int priority) :
+	Lesson(Table position, int field_w, int field_h, float priority) :
 		field_w(field_w), field_h(field_h), priority(priority),
 		position(position)
 	{
 	}
 
-	Lesson inverse() const
+	Lesson inverseChannels() const
 	{
 		Lesson res(*this);
 
-		res.position = position.inverse();
+		res.position = position.inverseChannels();
 
 		return res;
 	}
@@ -332,7 +350,9 @@ float score(network<sequential> net, Table field)
 	vec_t pos_item;
 	for (int j = 0; j < field_h; j++) {
 		for (int i = 0; i < field_w; i++) {
-			pos_item.push_back(field.vals[j * field_w + i]);
+			for (int c = 0; c < 2; c++) {
+				pos_item.push_back(field.vals[(j * field_w + i) * 2 + c]);
+			}
 		}
 	}
 
@@ -341,80 +361,12 @@ float score(network<sequential> net, Table field)
 	return prior[0];
 }
 
-/*void makeMove(network<sequential> net, Table field_data, Point& move, int& victor, bool rotate = true)
-{
-	Table ai_prior_0_0 = score(net, field_data);
-	Table ai_prior(field_data.width, field_data.height);
-	if (rotate) {
-
-		Table field_90 = field_data.rotateClockwise();
-		Table ai_prior_1_90 = score(net, field_90);
-
-		Table field_180 = field_90.rotateClockwise();
-		Table ai_prior_1_180 = ai_prior_1_90.rotateClockwise();
-		Table ai_prior_2_180 = score(net, field_180);
-
-		Table field_270 = field_180.rotateClockwise();
-		Table ai_prior_1_270 = ai_prior_1_180.rotateClockwise();
-		Table ai_prior_2_270 = ai_prior_2_180.rotateClockwise();
-		Table ai_prior_3_270 = score(net, field_270);
-
-		Table ai_prior_1_0 = ai_prior_1_270.rotateClockwise();
-		Table ai_prior_2_0 = ai_prior_2_270.rotateClockwise();
-		Table ai_prior_3_0 = ai_prior_3_270.rotateClockwise();
-	
-		Table ai_tmp1 = max(ai_prior_0_0, ai_prior_1_0);
-		Table ai_tmp2 = max(ai_tmp1, ai_prior_2_0);
-		ai_prior = max(ai_tmp2, ai_prior_3_0);
-	}
-	else
-	{
-		ai_prior = ai_prior_0_0;
-	}
-
-	// Searching for the maximum
-	bool occupied;
-	float maxpriority;
-	do
-	{
-		occupied = false;
-		move.i = -1; move.j = -1;
-		maxpriority = -1.0;
-		for (int j = 0; j < field_data.height; j++)
-		{
-			for (int i = 0; i < field_data.width; i++)
-			{
-				if (ai_prior.vals[j * field_data.width + i] > maxpriority)
-				{
-					maxpriority = ai_prior.vals[j * field_data.width + i];
-					move.i = i;
-					move.j = j;
-
-					if (abs(field_data.vals[j * field_data.width + i]) > 0.5)
-					{
-						occupied = true;
-						ai_prior.vals[j * field_data.width + i] = -1.0; // clearing this priority
-						break;
-					}
-
-				}
-			}
-		}
-		if (maxpriority == -1.0)
-		{
-			victor = -1;
-			printf("Draw\n");
-			break;
-		}
-	} while (occupied);
-}*/
-
-Point makeMove(network<sequential> net, Table field_data)
+Point makeMove(network<sequential> net, Table field_data, bool rotate_and_mirror = true)
 {
 	int cx = (field_data.width - 1) / 2;
 	int cy = (field_data.height - 1) / 2;
 
-	vector<float> res(field_data.width * field_data.height);
+	vector<float> res(field_data.width * field_data.height * 2/* channels */);
 	std::fill(res.begin(), res.end(), -100.0f);	// As low as possible
 	
 	//printf("---> ");
@@ -427,43 +379,54 @@ Point makeMove(network<sequential> net, Table field_data)
 			// Rolling the board
 			Table rolled = field_data.translateRoll(dx, dy);
 
-			if (abs(rolled.vals[cy * rolled.width + cx]) > 0.5)
+			if (abs(rolled.vals[(cy * rolled.width + cx) * 2 + 0]) > 0.5 || 
+				abs(rolled.vals[(cy * rolled.width + cx) * 2 + 1]) > 0.5)
 			{
 				//printf("%d,%d; ", dx, dy);
 				continue;	// The cell is occupied
 			}
 
-			// Rotating & scoring
-			float ai_prior_0_0 = score(net, rolled);
-			float ai_prior_0_0m = score(net, rolled.mirrorHorizontal());
+			float ai_prior;
 
-			Table field_90 = rolled.rotateClockwise();
-			float ai_prior_1_90 = score(net, field_90);
-			float ai_prior_1_90m = score(net, field_90.mirrorHorizontal());
+			if (rotate_and_mirror)
+			{
+				// Rotating & scoring
+				float ai_prior_0_0 = score(net, rolled);
+				float ai_prior_0_0m = score(net, rolled.mirrorHorizontal());
 
-			Table field_180 = field_90.rotateClockwise();
-			float ai_prior_2_180 = score(net, field_180);
-			float ai_prior_2_180m = score(net, field_180.mirrorHorizontal());
+				Table field_90 = rolled.rotateClockwise();
+				float ai_prior_1_90 = score(net, field_90);
+				float ai_prior_1_90m = score(net, field_90.mirrorHorizontal());
 
-			Table field_270 = field_180.rotateClockwise();
-			float ai_prior_3_270 = score(net, field_270);
-			float ai_prior_3_270m = score(net, field_270.mirrorHorizontal());
+				Table field_180 = field_90.rotateClockwise();
+				float ai_prior_2_180 = score(net, field_180);
+				float ai_prior_2_180m = score(net, field_180.mirrorHorizontal());
 
-			// TODO MIRRORING!!
+				Table field_270 = field_180.rotateClockwise();
+				float ai_prior_3_270 = score(net, field_270);
+				float ai_prior_3_270m = score(net, field_270.mirrorHorizontal());
 
-			float ai_tmp = max(ai_prior_0_0, ai_prior_0_0m);
-			ai_tmp = max(ai_tmp, ai_prior_1_90);
-			ai_tmp = max(ai_tmp, ai_prior_1_90m);
-			ai_tmp = max(ai_tmp, ai_prior_2_180);
-			ai_tmp = max(ai_tmp, ai_prior_2_180m);
-			ai_tmp = max(ai_tmp, ai_prior_3_270);
-			ai_tmp = max(ai_tmp, ai_prior_3_270m);
+				// TODO MIRRORING!!
 
-			float ai_prior = ai_tmp;
+				float ai_tmp = max(ai_prior_0_0, ai_prior_0_0m);
+				ai_tmp = max(ai_tmp, ai_prior_1_90);
+				ai_tmp = max(ai_tmp, ai_prior_1_90m);
+				ai_tmp = max(ai_tmp, ai_prior_2_180);
+				ai_tmp = max(ai_tmp, ai_prior_2_180m);
+				ai_tmp = max(ai_tmp, ai_prior_3_270);
+				ai_tmp = max(ai_tmp, ai_prior_3_270m);
+				ai_prior = ai_tmp;
+			}
+			else
+			{
+				ai_prior = score(net, rolled);
+			}
 
 			res[dy * field_data.width + dx] = ai_prior;
 		}
 	}
+
+	//printPriors(res, field_data.width, field_data.height);
 
 	// Searching for the hightest priority
 	int maxdx = -1, maxdy = -1; float m = -1.0;
@@ -514,9 +477,11 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 		vector<float> position;
 		for (int j = 0; j < field_h; j++) {
 			for (int i = 0; i < field_w; i++) {
-				float f;
-				lessonsFile.read((char*)&f, 4);
-				position.push_back(f);
+				for (int c = 0; c < 2; c++) {
+					float f;
+					lessonsFile.read((char*)&f, 4);
+					position.push_back(f);
+				}
 			}
 		}
 
@@ -537,22 +502,19 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 
 	printf("Lessons in the book: %d\n", usefulLessons.size());
 
-	size_t training_batch = usefulLessons.size();
-	int batches_count = 1;
-
 	// 1. Generating training & testing data
 
 	vector<vec_t> train_input_data;
 	vector<vec_t> train_output_data;
 
-	for (int m = 0; m < batches_count * training_batch; ++m)
+	for (int k = 0; k < usefulLessons.size(); ++k)
 	{
-		int k = m % usefulLessons.size();
-
 		vec_t pos_item;
 		for (int j = 0; j < field_h; j++) {
 			for (int i = 0; i < field_w; i++) {
-				pos_item.push_back(usefulLessons[k].position.vals[j * field_w + i]);
+				for (int c = 0; c < 2; c++) {
+					pos_item.push_back(usefulLessons[k].position.vals[(j * field_w + i) * 2 + c]);
+				}
 			}
 		}
 		train_input_data.push_back(pos_item);
@@ -561,6 +523,37 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 		train_output_data.push_back(pri_item);
 	}
 
+	// Adding some random lessons
+	for (int k = 0; k < usefulLessons.size(); ++k)
+	{
+		vec_t pos_item;
+		for (int j = 0; j < field_h; j++) {
+			for (int i = 0; i < field_w; i++) {
+				float val = 0;
+				if (rand() < RAND_MAX / 5)
+				{
+					if (rand() < RAND_MAX / 2)
+					{
+						/* X */
+						pos_item.push_back(1.0f); pos_item.push_back(0.0f);
+					}
+					else
+					{
+						/* O */
+						pos_item.push_back(0.0f); pos_item.push_back(1.0f);
+					}
+				}
+				else {
+					/* Empty */
+					pos_item.push_back(0.0f); pos_item.push_back(0.0f);
+				}
+			}
+		}
+		train_input_data.push_back(pos_item);
+
+		vec_t pri_item{ 0.0 };
+		train_output_data.push_back(pri_item);
+	}
 
 	printf("Training...\n");
 
@@ -570,7 +563,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	double delta_loss_per_epoch;
 	
 	//gradient_descent opt; opt.alpha = 0.75;
-	adam opt; opt.alpha /= 5;
+	adam opt; opt.alpha /= 10;
 	//int succeeded_tests;
 
 	size_t epochs = 200;
@@ -592,7 +585,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 		{
 			Table field_data = usefulLessons[i].position;
 
-			Point move = makeMove(net, field_data);
+			Point move = makeMove(net, field_data, false);
 
 			if (move.i == (field_data.width - 1) / 2 &&
 				move.j == (field_data.width - 1) / 2)
@@ -642,24 +635,25 @@ int main(int argc, char** argv)
 		int conv1_out_w = field_w - conv_kernel + 1;
 		int conv1_out_h = field_h - conv_kernel + 1;
 		int conv1_out = conv1_out_w * conv1_out_h;
-		int maps = conv_kernel * conv_kernel;	// from the ceiling
+		int maps = 2 * conv_kernel * conv_kernel;	// from the ceiling
 
 		int conv_kernel2 = 2;
 		int conv2_out_w = conv1_out_w - conv_kernel2 + 1;
 		int conv2_out_h = conv1_out_h - conv_kernel2 + 1;
 		int conv2_out = conv2_out_w * conv2_out_h;
-		int maps2 = maps* conv_kernel2 * conv_kernel2;	// from the ceiling
+		int maps2 = maps * 2;	// from the ceiling
 
 
 
 
-		net << layers::conv(field_w, field_h, conv_kernel, 1, maps) <<
+		net << layers::conv(field_w, field_h, conv_kernel, 2, maps) <<
 
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 
 			layers::conv(conv1_out_w, conv1_out_h, conv_kernel2, maps, maps2) <<
 
+			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 			layers::fc(conv2_out * maps2, conv2_out * maps) << tanh_layer(conv2_out * maps) <<
 
@@ -677,7 +671,9 @@ int main(int argc, char** argv)
 	Table field_data(field_w, field_h);
 	for (int j = 0; j < field_h; j++) {
 		for (int i = 0; i < field_w; i++) {
-			field_data.vals.push_back(0.0);
+			for (int c = 0; c < 2; c++) {
+				field_data.vals.push_back(0.0);
+			}
 		}
 	}
 
@@ -688,14 +684,14 @@ int main(int argc, char** argv)
 	do {
 		for (int pI = 0; pI < 2; pI++) {
 			printField(field_data.vals, field_w, field_h);
-			float vic = checkVictory(field_data.vals, field_w, field_h, vic_line_len);
-			if (vic > 0.5)
+			int vic = checkVictory(field_data.vals, field_w, field_h, vic_line_len);
+			if (vic == 0)
 			{
 				printf("Player X wins\n");
 				victor = 0;
 				break;
 			}
-			else if (vic < -0.5)
+			else if (vic == 1)
 			{
 				printf("Player O wins\n");
 				victor = 1;
@@ -705,7 +701,7 @@ int main(int argc, char** argv)
 			Table field_data_me_him = field_data;
 			if (userPlayerIndex != 1) {
 				// If the user plays "X", we inverse the field because "X" should mean "me"
-				field_data_me_him = field_data_me_him.inverse();
+				field_data_me_him = field_data_me_him.inverseChannels();
 			}
 
 			Point move(0, 0, field_w, field_h);
@@ -731,7 +727,7 @@ int main(int argc, char** argv)
 			if (victor != -1) {
 				// If not draw
 				lessons[pI].push_back(Lesson(field_data_me_him, field_w, field_h, move, 1.0));
-				field_data.vals[move.j * field_w + move.i] = playerVal(pI);
+				field_data.vals[(move.j * field_w + move.i) * 2 + pI] = 1.0;
 			}
 		}
 
@@ -747,24 +743,24 @@ int main(int argc, char** argv)
 			Lesson cur = lessons[victor][k].mulPriority(priority);
 			
 			// In the book 1 means "me" and -1 means "other player", not "X" and "O"
-			if (victor != 0 /* X */) cur = cur.inverse();
+			//if (victor != 0 /* X */) cur = cur.inverse();
 
 			usefulLessons.push_back(cur);
 
-			Lesson curi = cur.inverse().mulPriority(0.95);		// Defense is less prioritized than attack
-			usefulLessons.push_back(curi);
+			//Lesson curi = cur.inverse().mulPriority(0.95);		// Defense is less prioritized than attack
+			//usefulLessons.push_back(curi);
 			
 			priority /= 1.5;
 		}
 
-		int looser = (victor + 1) % 2;
+		/*int looser = (victor + 1) % 2;
 		priority = -0.2;
 		for (int k = lessons[looser].size() - 1; k >= 0; k--)
 		{
 			Lesson cur = lessons[looser][k].mulPriority(priority);
 
 			// In the book 1 means "me" and -1 means "other player", not "X" and "O"
-			if (looser != 0 /* X */) cur = cur.inverse();
+			if (looser != 0) cur = cur.inverse();
 
 			usefulLessons.push_back(cur);
 
@@ -772,7 +768,7 @@ int main(int argc, char** argv)
 			usefulLessons.push_back(curi);
 
 			priority /= 1.5;
-		}
+		}*/
 
 
 		// Saving useful lessons to file
@@ -785,7 +781,9 @@ int main(int argc, char** argv)
 			lessonsFile.write((const char*) &(usefulLessons[k].priority), 4);
 			for (int j = 0; j < field_h; j++) {
 				for (int i = 0; i < field_w; i++) {
-					lessonsFile.write((const char*) &(usefulLessons[k].position.vals[j * field_w + i]), 4);
+					for (int c = 0; c < 2; c++) {
+						lessonsFile.write((const char*) &(usefulLessons[k].position.vals[(j * field_w + i) * 2 + c]), 4);
+					}
 				}
 			}
 		}
