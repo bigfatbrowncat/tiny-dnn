@@ -252,6 +252,18 @@ public:
 
 		return res;
 	}
+
+	vec_t toVec() {
+		vec_t pos_item;
+		for (int j = 0; j < height; j++) {
+			for (int i = 0; i < width; i++) {
+				for (int c = 0; c < 2; c++) {
+					pos_item.push_back(vals[(j * width + i) * 2 + c]);
+				}
+			}
+		}
+		return pos_item;
+	}
 };
 
 /*Table max(Table one, Table two)
@@ -331,11 +343,11 @@ public:
 		return res;
 	}
 
-	Lesson mulPriority(float priority_mul) const
+	Lesson setPriority(float value) const
 	{
 		Lesson res(*this);
 
-		res.priority *= priority_mul;
+		res.priority *= value;
 
 		return res;
 	}
@@ -405,8 +417,6 @@ Point makeMove(network<sequential> net, Table field_data, bool rotate_and_mirror
 				Table field_270 = field_180.rotateClockwise();
 				float ai_prior_3_270 = score(net, field_270);
 				float ai_prior_3_270m = score(net, field_270.mirrorHorizontal());
-
-				// TODO MIRRORING!!
 
 				float ai_tmp = max(ai_prior_0_0, ai_prior_0_0m);
 				ai_tmp = max(ai_tmp, ai_prior_1_90);
@@ -507,53 +517,31 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	vector<vec_t> train_input_data;
 	vector<vec_t> train_output_data;
 
+	// Adding the lessons
 	for (int k = 0; k < usefulLessons.size(); ++k)
 	{
-		vec_t pos_item;
-		for (int j = 0; j < field_h; j++) {
-			for (int i = 0; i < field_w; i++) {
-				for (int c = 0; c < 2; c++) {
-					pos_item.push_back(usefulLessons[k].position.vals[(j * field_w + i) * 2 + c]);
-				}
-			}
-		}
+		vec_t pos_item = usefulLessons[k].position.toVec();
 		train_input_data.push_back(pos_item);
 
 		vec_t pri_item { usefulLessons[k].priority };
 		train_output_data.push_back(pri_item);
 	}
 
-	// Adding some random lessons
-	for (int k = 0; k < usefulLessons.size(); ++k)
+	// Adding some fake lessons
+	/*for (int k = 0; k < usefulLessons.size(); ++k)
 	{
-		vec_t pos_item;
-		for (int j = 0; j < field_h; j++) {
-			for (int i = 0; i < field_w; i++) {
-				float val = 0;
-				if (rand() < RAND_MAX / 5)
-				{
-					if (rand() < RAND_MAX / 2)
-					{
-						/* X */
-						pos_item.push_back(1.0f); pos_item.push_back(0.0f);
-					}
-					else
-					{
-						/* O */
-						pos_item.push_back(0.0f); pos_item.push_back(1.0f);
-					}
-				}
-				else {
-					/* Empty */
-					pos_item.push_back(0.0f); pos_item.push_back(0.0f);
-				}
-			}
-		}
-		train_input_data.push_back(pos_item);
+		Lesson falseLesson = usefulLessons[k];
+		falseLesson.priority = 0.0f; // It is false
+		falseLesson.position = falseLesson.position.translateRoll(
+			rand() % (falseLesson.field_w - 1) + 1,
+			rand() % (falseLesson.field_h - 1) + 1
+		);
 
-		vec_t pri_item{ 0.0 };
+		train_input_data.push_back(falseLesson.position.toVec());
+
+		vec_t pri_item { 0.0 };
 		train_output_data.push_back(pri_item);
-	}
+	}*/
 
 	printf("Training...\n");
 
@@ -576,7 +564,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 		loss = net.get_loss<mse>(train_input_data, train_output_data);
 
 		delta_loss_per_epoch = (old_loss - loss) / epochs;
-		if (delta_loss_per_epoch < 0) opt.alpha /= 2;
+		//if (delta_loss_per_epoch < 0) opt.alpha /= 2;
 
 		// Scoring
 
@@ -587,18 +575,28 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 
 			Point move = makeMove(net, field_data, false);
 
-			if (move.i == (field_data.width - 1) / 2 &&
-				move.j == (field_data.width - 1) / 2)
+			bool hit_the_point = 
+				move.i == (field_data.width - 1) / 2 &&
+				move.j == (field_data.height - 1) / 2;
+
+			if ((usefulLessons[i].priority > 0 && hit_the_point) || 
+				(usefulLessons[i].priority < 0 && !hit_the_point))
 			{
 				succeeded_tests++;
-				//printField(usefulLessons[i].position.vals,usefulLessons[i].position.width, usefulLessons[i].position.height);
+				printf("SUCCESS\n");
+				printField(usefulLessons[i].position.vals,usefulLessons[i].position.width, usefulLessons[i].position.height);
+			}
+			else
+			{
+				printf("FAIL\n");
+				printField(usefulLessons[i].position.vals, usefulLessons[i].position.width, usefulLessons[i].position.height);
 			}
 		}
 
 		ee += epochs;
 		cout << "epoch " << ee << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << "; alpha=" << opt.alpha << "; learned: " << succeeded_tests << " of " << usefulLessons.size() << "(" << (int)(succeeded_tests * 100 / usefulLessons.size()) << "%)" << endl;
 
-	} while (delta_loss_per_epoch > mse_stop || delta_loss_per_epoch < 0);
+	} while (delta_loss_per_epoch > mse_stop/* || delta_loss_per_epoch < 0*/);
 }
 
 int main(int argc, char** argv)
@@ -637,17 +635,23 @@ int main(int argc, char** argv)
 		int conv1_out = conv1_out_w * conv1_out_h;
 		int maps = 2 * conv_kernel * conv_kernel;	// from the ceiling
 
-		int conv_kernel2 = 2;
+		int conv_kernel2 = 4;
 		int conv2_out_w = conv1_out_w - conv_kernel2 + 1;
 		int conv2_out_h = conv1_out_h - conv_kernel2 + 1;
 		int conv2_out = conv2_out_w * conv2_out_h;
-		int maps2 = maps * 2;	// from the ceiling
+		int maps2 = maps * conv_kernel2 * conv_kernel2;	// from the ceiling
 
 
 
 
-		net << layers::conv(field_w, field_h, conv_kernel, 2, maps) <<
+		net << 
+/*			layers::fc(size * 2, size * 2) << tanh_layer(size * 2) <<
+			layers::fc(size * 2, size * 2) << tanh_layer(size * 2) <<*/
 
+			layers::conv(field_w, field_h, conv_kernel, 2, maps) <<
+
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 
@@ -655,9 +659,10 @@ int main(int argc, char** argv)
 
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
-			layers::fc(conv2_out * maps2, conv2_out * maps) << tanh_layer(conv2_out * maps) <<
+			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 
-			layers::fc(conv2_out * maps, 1) << tanh_layer(1);
+			layers::fc(conv2_out * maps2, 1) << tanh_layer(1);
 	}
 
 	if (argc == 2 && strcmp(argv[1], "train-first") == 0)
@@ -680,7 +685,7 @@ int main(int argc, char** argv)
 	srand(time(nullptr));
 	int userPlayerIndex = rand() % 2;
 
-	int victor = -2;
+	int victor = -2; int moveId = 0;
 	do {
 		for (int pI = 0; pI < 2; pI++) {
 			printField(field_data.vals, field_w, field_h);
@@ -699,8 +704,8 @@ int main(int argc, char** argv)
 			}
 
 			Table field_data_me_him = field_data;
-			if (userPlayerIndex != 1) {
-				// If the user plays "X", we inverse the field because "X" should mean "me"
+			if (pI != 0) {
+				// If the current player isn't "X", we inverse the field because "X" should mean "me"
 				field_data_me_him = field_data_me_him.inverseChannels();
 			}
 
@@ -726,9 +731,13 @@ int main(int argc, char** argv)
 
 			if (victor != -1) {
 				// If not draw
-				lessons[pI].push_back(Lesson(field_data_me_him, field_w, field_h, move, 1.0));
+				if (moveId > 0)
+				{
+					lessons[pI].push_back(Lesson(field_data_me_him, field_w, field_h, move, 1.0));
+				}
 				field_data.vals[(move.j * field_w + move.i) * 2 + pI] = 1.0;
 			}
+			moveId++;
 		}
 
 	} while (victor < -1);
@@ -740,7 +749,7 @@ int main(int argc, char** argv)
 		float priority = 1.0;
 		for (int k = lessons[victor].size() - 1; k >= 0; k--)
 		{
-			Lesson cur = lessons[victor][k].mulPriority(priority);
+			Lesson cur = lessons[victor][k].setPriority(priority);
 			
 			// In the book 1 means "me" and -1 means "other player", not "X" and "O"
 			//if (victor != 0 /* X */) cur = cur.inverse();
@@ -750,26 +759,18 @@ int main(int argc, char** argv)
 			//Lesson curi = cur.inverse().mulPriority(0.95);		// Defense is less prioritized than attack
 			//usefulLessons.push_back(curi);
 			
-			priority /= 1.5;
+			priority /= 1.2;
 		}
 
+		
 		/*int looser = (victor + 1) % 2;
-		priority = -0.2;
-		for (int k = lessons[looser].size() - 1; k >= 0; k--)
+		priority = 0;
+		int k = lessons[looser].size() - 1;
 		{
-			Lesson cur = lessons[looser][k].mulPriority(priority);
-
-			// In the book 1 means "me" and -1 means "other player", not "X" and "O"
-			if (looser != 0) cur = cur.inverse();
-
+			Lesson cur = lessons[looser][k].setPriority(-1);
 			usefulLessons.push_back(cur);
-
-			Lesson curi = cur.inverse().mulPriority(0.95);		// Defense is less prioritized than attack
-			usefulLessons.push_back(curi);
-
-			priority /= 1.5;
 		}*/
-
+		
 
 		// Saving useful lessons to file
 		ofstream lessonsFile;
