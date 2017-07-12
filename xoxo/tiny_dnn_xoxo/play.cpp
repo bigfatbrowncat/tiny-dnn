@@ -49,7 +49,11 @@ void printPriors(vector<float> field_data, int field_w, int field_h)
 	{
 		for (int i = 0; i < field_w; i++)
 		{
-			printf("%.2f ", field_data[j * field_w + i]);
+			if (field_data[j * field_w + i] < -99) {
+				printf("XXXX ");
+			} else {
+				printf("%.2f ", field_data[j * field_w + i]);
+			}
 		}
 		printf("\n");
 	}
@@ -171,6 +175,11 @@ class Table
 public:
 	int width, height;
 	vector<float> vals;
+
+	static Table empty(int width, int height) {
+		vector<float> vals(width * height, 0.0);
+		return Table(vals, width, height);
+	}
 
 	Table(vector<float> vals, int width, int height) : vals(vals), width(width), height(height) { }
 	Table(int width, int height) : width(width), height(height) { }
@@ -436,7 +445,18 @@ Point makeMove(network<sequential> net, Table field_data, bool rotate_and_mirror
 		}
 	}
 
-	//printPriors(res, field_data.width, field_data.height);
+	vector<float> show = res;
+	for (int dy = 0; dy < field_data.height; dy++)
+	{
+		for (int dx = 0; dx < field_data.width; dx++)
+		{
+			int xx = (-dx + cx + field_data.width) % field_data.width;
+			int yy = (-dy + cy + field_data.height) % field_data.height;
+
+			show[yy * field_data.width + xx] = res[dy * field_data.width + dx];
+		}
+	}
+	printPriors(show, field_data.width, field_data.height);
 
 	// Searching for the hightest priority
 	int maxdx = -1, maxdy = -1; float m = -1.0;
@@ -763,14 +783,17 @@ int main(int argc, char** argv)
 		}
 
 		
-		/*int looser = (victor + 1) % 2;
-		priority = 0;
-		int k = lessons[looser].size() - 1;
+		int looser = (victor + 1) % 2;
+		priority = -1;
+		for (int k = lessons[looser].size() - 1; k >= 0; k--)
 		{
-			Lesson cur = lessons[looser][k].setPriority(-1);
+			Lesson cur = lessons[looser][k].setPriority(priority);
 			usefulLessons.push_back(cur);
-		}*/
+
+			priority /= 1.2;
+		}
 		
+		usefulLessons.push_back(Lesson(Table::empty(field_w, field_h), field_w, field_h, 0.0));
 
 		// Saving useful lessons to file
 		ofstream lessonsFile;
