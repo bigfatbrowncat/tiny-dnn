@@ -548,20 +548,20 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	}
 
 	// Adding some fake lessons
-	/*for (int k = 0; k < usefulLessons.size(); ++k)
+	for (int k = 0; k < usefulLessons.size(); ++k)
 	{
 		Lesson falseLesson = usefulLessons[k];
 		falseLesson.priority = 0.0f; // It is false
 		falseLesson.position = falseLesson.position.translateRoll(
-			rand() % (falseLesson.field_w - 1) + 1,
-			rand() % (falseLesson.field_h - 1) + 1
+			rand() % (falseLesson.field_w - 2) + 1,
+			rand() % (falseLesson.field_h - 2) + 1
 		);
 
 		train_input_data.push_back(falseLesson.position.toVec());
 
 		vec_t pri_item { 0.0 };
 		train_output_data.push_back(pri_item);
-	}*/
+	}
 
 	printf("Training...\n");
 
@@ -574,7 +574,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	adam opt; opt.alpha /= 10;
 	//int succeeded_tests;
 
-	size_t epochs = 200;
+	size_t epochs = 100;
 	loss = net.get_loss<mse>(train_input_data, train_output_data);
 	do
 	{
@@ -687,7 +687,7 @@ int main(int argc, char** argv)
 
 	if (argc == 2 && strcmp(argv[1], "train-first") == 0)
 	{
-		train(field_w, field_h, net, 1e-5);
+		train(field_w, field_h, net, 1e-4);
 	}
 
 
@@ -783,17 +783,17 @@ int main(int argc, char** argv)
 		}
 
 		
-		int looser = (victor + 1) % 2;
+		/*int looser = (victor + 1) % 2;
 		priority = -1;
-		for (int k = lessons[looser].size() - 1; k >= 0; k--)
+		int k = lessons[looser].size() - 1;
 		{
 			Lesson cur = lessons[looser][k].setPriority(priority);
 			usefulLessons.push_back(cur);
 
 			priority /= 1.2;
-		}
+		}*/
 		
-		usefulLessons.push_back(Lesson(Table::empty(field_w, field_h), field_w, field_h, 0.0));
+		//usefulLessons.push_back(Lesson(Table::empty(field_w, field_h), field_w, field_h, 0.0));
 
 		// Saving useful lessons to file
 		ofstream lessonsFile;
@@ -815,7 +815,7 @@ int main(int argc, char** argv)
 
 		printf("%d lessons appended to the book\n", usefulLessons.size());
 
-		train(field_w, field_h, net, 1e-5);
+		train(field_w, field_h, net, 1e-4);
 
 		printf("Saving net...");
 		net.save("xoxonet.weights");
