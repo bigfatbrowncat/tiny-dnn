@@ -548,10 +548,12 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	}
 
 	// Adding some fake lessons
-	for (int k = 0; k < usefulLessons.size(); ++k)
+	/*for (int k = 0; k < usefulLessons.size(); ++k)
 	{
+		if (usefulLessons[k].priority < 0.0) continue; // No falses for negative lessons
+
 		Lesson falseLesson = usefulLessons[k];
-		falseLesson.priority = 0.0f; // It is false
+		falseLesson.priority = 0.0f; // It is a false
 		falseLesson.position = falseLesson.position.translateRoll(
 			rand() % (falseLesson.field_w - 2) + 1,
 			rand() % (falseLesson.field_h - 2) + 1
@@ -561,7 +563,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 
 		vec_t pri_item { 0.0 };
 		train_output_data.push_back(pri_item);
-	}
+	}*/
 
 	printf("Training...\n");
 
@@ -599,17 +601,18 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 				move.i == (field_data.width - 1) / 2 &&
 				move.j == (field_data.height - 1) / 2;
 
-			if ((usefulLessons[i].priority > 0 && hit_the_point) || 
+			if ((abs(usefulLessons[i].priority) < 0.0001) ||
+				(usefulLessons[i].priority > 0 && hit_the_point) ||
 				(usefulLessons[i].priority < 0 && !hit_the_point))
 			{
 				succeeded_tests++;
-				printf("SUCCESS\n");
-				printField(usefulLessons[i].position.vals,usefulLessons[i].position.width, usefulLessons[i].position.height);
+				//printf("SUCCESS\n");
+				//printField(usefulLessons[i].position.vals,usefulLessons[i].position.width, usefulLessons[i].position.height);
 			}
 			else
 			{
-				printf("FAIL\n");
-				printField(usefulLessons[i].position.vals, usefulLessons[i].position.width, usefulLessons[i].position.height);
+				//printf("FAIL\n");
+				//printField(usefulLessons[i].position.vals, usefulLessons[i].position.width, usefulLessons[i].position.height);
 			}
 		}
 
@@ -766,8 +769,8 @@ int main(int argc, char** argv)
 		printf("Other player wins. I shall learn\n");
 
 		vector<Lesson> usefulLessons;
-		float priority = 1.0;
-		for (int k = lessons[victor].size() - 1; k >= 0; k--)
+		float priority = 0.85;
+		for (int k = lessons[victor].size() - 1; k >= max((int)lessons[victor].size() - 4, 0); k--)
 		{
 			Lesson cur = lessons[victor][k].setPriority(priority);
 			
@@ -776,24 +779,24 @@ int main(int argc, char** argv)
 
 			usefulLessons.push_back(cur);
 
-			//Lesson curi = cur.inverse().mulPriority(0.95);		// Defense is less prioritized than attack
+			//Lesson curi = cur.inverseChannels().setPriority(0.9 * priority);		// Defense is less prioritized than attack
 			//usefulLessons.push_back(curi);
 			
 			priority /= 1.2;
 		}
 
 		
-		/*int looser = (victor + 1) % 2;
-		priority = -1;
-		int k = lessons[looser].size() - 1;
+		int looser = (victor + 1) % 2;
+		priority = -0.3;
+		for (int k = lessons[looser].size() - 1; k >= max((int)lessons[looser].size() - 4, 0); k--)
 		{
 			Lesson cur = lessons[looser][k].setPriority(priority);
 			usefulLessons.push_back(cur);
 
 			priority /= 1.2;
-		}*/
+		}
 		
-		//usefulLessons.push_back(Lesson(Table::empty(field_w, field_h), field_w, field_h, 0.0));
+		usefulLessons.push_back(Lesson(Table::empty(field_w, field_h), field_w, field_h, 0.0));
 
 		// Saving useful lessons to file
 		ofstream lessonsFile;
