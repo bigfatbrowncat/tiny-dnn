@@ -427,21 +427,31 @@ Point makeMove(network<sequential> net, Table field_data, bool rotate_and_mirror
 				float ai_prior_3_270 = score(net, field_270);
 				float ai_prior_3_270m = score(net, field_270.mirrorHorizontal());
 
-				float ai_tmp = max(ai_prior_0_0, ai_prior_0_0m);
+				/*float ai_tmp = max(ai_prior_0_0, ai_prior_0_0m);
 				ai_tmp = max(ai_tmp, ai_prior_1_90);
 				ai_tmp = max(ai_tmp, ai_prior_1_90m);
 				ai_tmp = max(ai_tmp, ai_prior_2_180);
 				ai_tmp = max(ai_tmp, ai_prior_2_180m);
 				ai_tmp = max(ai_tmp, ai_prior_3_270);
-				ai_tmp = max(ai_tmp, ai_prior_3_270m);
-				ai_prior = ai_tmp;
+				ai_tmp = max(ai_tmp, ai_prior_3_270m);*/
+
+				float ai_tmp = ai_prior_0_0 + ai_prior_0_0m;
+				ai_tmp += ai_prior_1_90;
+				ai_tmp += ai_prior_1_90m;
+				ai_tmp += ai_prior_2_180;
+				ai_tmp += ai_prior_2_180m;
+				ai_tmp += ai_prior_3_270;
+				ai_tmp += ai_prior_3_270m;
+				ai_prior = ai_tmp / 8;
+
 			}
 			else
 			{
 				ai_prior = score(net, rolled);
 			}
 
-			res[dy * field_data.width + dx] = ai_prior;
+			float bloha = ((float)rand() / RAND_MAX) / 100;
+			res[dy * field_data.width + dx] = ai_prior - bloha;
 		}
 	}
 
@@ -525,6 +535,10 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	}
 	lessonsFile.close();
 
+	// Adding "zero" lesson
+	usefulLessons.push_back(Lesson(Table::empty(field_w, field_h), field_w, field_h, 0.0));
+
+
 /*	for (int i = 0; i < usefulLessons.size(); i++)
 	{
 		printField(usefulLessons[i].position.vals, usefulLessons[i].position.width, usefulLessons[i].position.height);
@@ -537,32 +551,38 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	vector<vec_t> train_input_data;
 	vector<vec_t> train_output_data;
 
-	// Adding the lessons
-	for (int k = 0; k < usefulLessons.size(); ++k)
+	int repeats = 1;
+
+	for (int repeat = 0; repeat < repeats; repeat++)
 	{
-		vec_t pos_item = usefulLessons[k].position.toVec();
-		train_input_data.push_back(pos_item);
+		// Adding the lessons
+		for (int k = 0; k < usefulLessons.size(); ++k)
+		{
+			vec_t pos_item = usefulLessons[k].position.toVec();
+			train_input_data.push_back(pos_item);
 
-		vec_t pri_item { usefulLessons[k].priority };
-		train_output_data.push_back(pri_item);
-	}
+			vec_t pri_item{ usefulLessons[k].priority };
+			train_output_data.push_back(pri_item);
+		}
 
-	// Adding some fake lessons
-	for (int k = 0; k < usefulLessons.size(); ++k)
-	{
-		if (usefulLessons[k].priority < 0.0) continue; // No falses for negative lessons
+		// Adding some fake lessons
+		/*for (int k = 0; k < usefulLessons.size(); ++k)
+		{
+			if (usefulLessons[k].priority < 0.0) continue; // No falses for negative lessons
 
-		Lesson falseLesson = usefulLessons[k];
-		falseLesson.priority = -usefulLessons[k].priority / 5; // It is a false
-		falseLesson.position = falseLesson.position.translateRoll(
-			rand() % (falseLesson.field_w - 2) + 1,
-			rand() % (falseLesson.field_h - 2) + 1
-		);
+			Lesson falseLesson = usefulLessons[k];
+			falseLesson.priority = -usefulLessons[k].priority / 5; // It is a false
+			falseLesson.position = falseLesson.position.translateRoll(
+				rand() % (falseLesson.field_w - 2) + 1,
+				rand() % (falseLesson.field_h - 2) + 1
+			);
 
-		train_input_data.push_back(falseLesson.position.toVec());
+			train_input_data.push_back(falseLesson.position.toVec());
 
-		vec_t pri_item { 0.0 };
-		train_output_data.push_back(pri_item);
+			vec_t pri_item{ 0.0 };
+			train_output_data.push_back(pri_item);
+		}*/
+
 	}
 
 	printf("Training...\n");
@@ -573,7 +593,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	double delta_loss_per_epoch;
 	
 	//gradient_descent opt; opt.alpha = 0.75;
-	adam opt; opt.alpha /= 10;
+	adam opt; opt.alpha /= 30;
 	//int succeeded_tests;
 
 	size_t epochs = 100;
@@ -606,13 +626,13 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 				(usefulLessons[i].priority < 0 && !hit_the_point))
 			{
 				succeeded_tests++;
-				//printf("SUCCESS\n");
-				//printField(usefulLessons[i].position.vals,usefulLessons[i].position.width, usefulLessons[i].position.height);
+				printf("SUCCESS\n");
+				printField(usefulLessons[i].position.vals,usefulLessons[i].position.width, usefulLessons[i].position.height);
 			}
 			else
 			{
-				//printf("FAIL\n");
-				//printField(usefulLessons[i].position.vals, usefulLessons[i].position.width, usefulLessons[i].position.height);
+				printf("FAIL\n");
+				printField(usefulLessons[i].position.vals, usefulLessons[i].position.width, usefulLessons[i].position.height);
 			}
 		}
 
@@ -667,9 +687,18 @@ int main(int argc, char** argv)
 
 
 
-		net << 
-/*			layers::fc(size * 2, size * 2) << tanh_layer(size * 2) <<
-			layers::fc(size * 2, size * 2) << tanh_layer(size * 2) <<*/
+		net <<
+			layers::fc(size * 2, size * 3) << tanh_layer(size * 3) <<
+			layers::fc(size * 3, size * 4) << tanh_layer(size * 4) <<
+			layers::fc(size * 4, size * 5) << tanh_layer(size * 5) <<
+			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
+			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
+			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
+			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
+			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
+			layers::fc(size * 5, size * 4) << tanh_layer(size * 4) <<
+			layers::fc(size * 4, size * 3) << tanh_layer(size * 3) <<
+			layers::fc(size * 3, size * 2) << tanh_layer(size * 2) <<
 
 			layers::conv(field_w, field_h, conv_kernel, 2, maps) <<
 
@@ -677,9 +706,13 @@ int main(int argc, char** argv)
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 
 			layers::conv(conv1_out_w, conv1_out_h, conv_kernel2, maps, maps2) <<
 
+			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
@@ -769,20 +802,27 @@ int main(int argc, char** argv)
 		printf("Other player wins. I shall learn\n");
 
 		vector<Lesson> usefulLessons;
-		float priority = 0.85;
-		for (int k = lessons[victor].size() - 1; k >= max((int)lessons[victor].size() - 4, 0); k--)
+		float priority0 = 0.85;
+
+		for (int k = lessons[victor].size() - 1; k >= max((int)lessons[victor].size() - 5, 0); k--)
 		{
-			Lesson cur = lessons[victor][k].setPriority(priority);
+			int i = lessons[victor].size() - k - 1;
+
+			float priorityAttack = 0.85*pow(0.95, i);
+			float priorityDefence = 0.84;
+
+
+			Lesson cur = lessons[victor][k].setPriority(priorityAttack);
 			
 			// In the book 1 means "me" and -1 means "other player", not "X" and "O"
 			//if (victor != 0 /* X */) cur = cur.inverse();
 
 			usefulLessons.push_back(cur);
 
-			//Lesson curi = cur.inverseChannels().setPriority(0.9 * priority);		// Defense is less prioritized than attack
-			//usefulLessons.push_back(curi);
+			Lesson curi = cur.inverseChannels().setPriority(priorityDefence);		// Defense is less prioritized than attack
+			usefulLessons.push_back(curi);
 			
-			priority /= 1.2;
+			//priority /= 1.2;
 		}
 
 		
@@ -793,7 +833,7 @@ int main(int argc, char** argv)
 			Lesson cur = lessons[looser][k].setPriority(priority);
 			usefulLessons.push_back(cur);
 
-			priority /= 1.2;
+			priority /= 1.5;
 		}*/
 		
 		//usefulLessons.push_back(Lesson(Table::empty(field_w, field_h), field_w, field_h, 0.0));
@@ -818,7 +858,7 @@ int main(int argc, char** argv)
 
 		printf("%d lessons appended to the book\n", usefulLessons.size());
 
-		train(field_w, field_h, net, 1e-4);
+		train(field_w, field_h, net, 1e-3);
 
 		printf("Saving net...");
 		net.save("xoxonet.weights");
