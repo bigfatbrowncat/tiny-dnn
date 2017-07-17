@@ -275,20 +275,17 @@ public:
 	}
 };
 
-/*Table max(Table one, Table two)
+vector<float> max(vector<float> one, vector<float> two)
 {
-	assert(one.width == two.width);
-	assert(one.height == two.height);
+	assert(one.size() == two.size());
 
 	vector<float> rmax;
-	rmax.resize(one.width * one.height);
-	for (int j = 0; j < one.height; j++) {
-		for (int i = 0; i < one.width; i++) {
-			rmax[j * one.width + i] = fmaxf(one.vals[j * one.width + i], two.vals[j * one.width + i]);
-		}
+	rmax.resize(one.size());
+	for (int j = 0; j < one.size(); j++) {
+		rmax[j] = fmaxf(one[j], two[j]);
 	}
-	return Table(rmax, one.width, one.height);
-}*/
+	return rmax;
+}
 
 class Lesson
 {
@@ -306,17 +303,17 @@ private:
 
 public:
 	int field_w, field_h;
-	float priority;
+	vector<float> classes;
 	Table position;
 
-	Lesson(Table position, int field_w, int field_h, Point move, float priority) :
-		field_w(field_w), field_h(field_h), priority(priority),
+	Lesson(Table position, int field_w, int field_h, Point move, vector<float> classes) :
+		field_w(field_w), field_h(field_h), classes(classes),
 		position(position.translateRoll(dx(field_w, move.i), dy(field_h, move.j)))
 	{
 	}
 
-	Lesson(Table position, int field_w, int field_h, float priority) :
-		field_w(field_w), field_h(field_h), priority(priority),
+	Lesson(Table position, int field_w, int field_h, vector<float> classes) :
+		field_w(field_w), field_h(field_h), classes(classes),
 		position(position)
 	{
 	}
@@ -352,18 +349,18 @@ public:
 		return res;
 	}
 
-	Lesson setPriority(float value) const
+	Lesson setClasses(vector<float> classes) const
 	{
 		Lesson res(*this);
 
-		res.priority = value;
+		res.classes = classes;
 
 		return res;
 	}
 
 };
 
-float score(network<sequential> net, Table field)
+vector<float> score(network<sequential> net, Table field, int strategic_depth)
 {
 	int field_w = field.width;
 	int field_h = field.height;
@@ -378,11 +375,15 @@ float score(network<sequential> net, Table field)
 	}
 
 	vec_t prior = net.predict(pos_item);
+	vector<float> res;
+	for (int i = 0; i < strategic_depth * 2; i++) {
+		res.push_back(prior[i]);
+	}
 
-	return prior[0];
+	return res;
 }
 
-Point makeMove(network<sequential> net, Table field_data, bool rotate_and_mirror = true)
+Point makeMove(network<sequential> net, Table field_data, int strategic_depth, bool rotate_and_mirror = true)
 {
 	int cx = (field_data.width - 1) / 2;
 	int cy = (field_data.height - 1) / 2;
@@ -400,58 +401,56 @@ Point makeMove(network<sequential> net, Table field_data, bool rotate_and_mirror
 			// Rolling the board
 			Table rolled = field_data.translateRoll(dx, dy);
 
-			if (abs(rolled.vals[(cy * rolled.width + cx) * 2 + 0]) > 0.5 || 
+			if (abs(rolled.vals[(cy * rolled.width + cx) * 2 + 0]) > 0.5 ||
 				abs(rolled.vals[(cy * rolled.width + cx) * 2 + 1]) > 0.5)
 			{
 				//printf("%d,%d; ", dx, dy);
 				continue;	// The cell is occupied
 			}
 
-			float ai_prior;
+			vector<float> ai_prior;
 
 			if (rotate_and_mirror)
 			{
 				// Rotating & scoring
-				float ai_prior_0_0 = score(net, rolled);
-				float ai_prior_0_0m = score(net, rolled.mirrorHorizontal());
+				vector<float> ai_prior_0_0 = score(net, rolled, strategic_depth);
+				vector<float> ai_prior_0_0m = score(net, rolled.mirrorHorizontal(), strategic_depth);
 
 				Table field_90 = rolled.rotateClockwise();
-				float ai_prior_1_90 = score(net, field_90);
-				float ai_prior_1_90m = score(net, field_90.mirrorHorizontal());
+				vector<float> ai_prior_1_90 = score(net, field_90, strategic_depth);
+				vector<float> ai_prior_1_90m = score(net, field_90.mirrorHorizontal(), strategic_depth);
 
 				Table field_180 = field_90.rotateClockwise();
-				float ai_prior_2_180 = score(net, field_180);
-				float ai_prior_2_180m = score(net, field_180.mirrorHorizontal());
+				vector<float> ai_prior_2_180 = score(net, field_180, strategic_depth);
+				vector<float> ai_prior_2_180m = score(net, field_180.mirrorHorizontal(), strategic_depth);
 
 				Table field_270 = field_180.rotateClockwise();
-				float ai_prior_3_270 = score(net, field_270);
-				float ai_prior_3_270m = score(net, field_270.mirrorHorizontal());
+				vector<float> ai_prior_3_270 = score(net, field_270, strategic_depth);
+				vector<float> ai_prior_3_270m = score(net, field_270.mirrorHorizontal(), strategic_depth);
 
-				/*float ai_tmp = max(ai_prior_0_0, ai_prior_0_0m);
+				vector<float> ai_tmp = max(ai_prior_0_0, ai_prior_0_0m);
 				ai_tmp = max(ai_tmp, ai_prior_1_90);
 				ai_tmp = max(ai_tmp, ai_prior_1_90m);
 				ai_tmp = max(ai_tmp, ai_prior_2_180);
 				ai_tmp = max(ai_tmp, ai_prior_2_180m);
 				ai_tmp = max(ai_tmp, ai_prior_3_270);
-				ai_tmp = max(ai_tmp, ai_prior_3_270m);*/
+				ai_tmp = max(ai_tmp, ai_prior_3_270m);
 
-				float ai_tmp = ai_prior_0_0 + ai_prior_0_0m;
-				ai_tmp += ai_prior_1_90;
-				ai_tmp += ai_prior_1_90m;
-				ai_tmp += ai_prior_2_180;
-				ai_tmp += ai_prior_2_180m;
-				ai_tmp += ai_prior_3_270;
-				ai_tmp += ai_prior_3_270m;
-				ai_prior = ai_tmp / 8;
+				ai_prior = ai_tmp;
 
 			}
 			else
 			{
-				ai_prior = score(net, rolled);
+				ai_prior = score(net, rolled, strategic_depth);
 			}
 
-			float bloha = ((float)rand() / RAND_MAX) / 100;
-			res[dy * field_data.width + dx] = ai_prior - bloha;
+			vector<float> strat_coeff(strategic_depth * 2, 1.0f);	// We need to set them to something
+			float ai_prior_sum = 0.0;
+			for (int d = 0; d < strategic_depth * 2; d++) {
+				ai_prior_sum += ai_prior[d] * strat_coeff[d];
+			}
+
+			res[dy * field_data.width + dx] = ai_prior_sum;
 		}
 	}
 
@@ -498,7 +497,7 @@ Point makeMove(network<sequential> net, Table field_data, bool rotate_and_mirror
 	return move;
 }
 
-void train(int field_w, int field_h, network<sequential> net, float mse_stop)
+void train(int field_w, int field_h, int strategic_depth, network<sequential> net, float mse_stop)
 {
 	vector<Lesson> usefulLessons;
 
@@ -511,9 +510,6 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 		lessonsFile.read(&magic, 1);
 		if (magic != 'L') break;
 
-		float priority;
-		lessonsFile.read((char*)&priority, 4);
-
 		vector<float> position;
 		for (int j = 0; j < field_h; j++) {
 			for (int i = 0; i < field_w; i++) {
@@ -525,18 +521,27 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 			}
 		}
 
+		vector<float> classes;
+		for (int k = 0; k < 2; k++) {
+			for (int m = 0; m < strategic_depth; m++) {
+				float f;
+				lessonsFile.read((char*)&f, 4);
+				classes.push_back(f);
+			}
+		}
+
 		usefulLessons.push_back(
 			Lesson(
 				Table(position, field_w, field_h), 
 				field_w, field_h, 
-				priority
+				classes
 			)
 		);
 	}
 	lessonsFile.close();
 
 	// Adding "zero" lesson
-	usefulLessons.push_back(Lesson(Table::empty(field_w, field_h), field_w, field_h, 0.0));
+	usefulLessons.push_back(Lesson(Table::empty(field_w, field_h), field_w, field_h, vector<float>(strategic_depth * 2, 0.0)));
 
 
 /*	for (int i = 0; i < usefulLessons.size(); i++)
@@ -561,7 +566,9 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 			vec_t pos_item = usefulLessons[k].position.toVec();
 			train_input_data.push_back(pos_item);
 
-			vec_t pri_item{ usefulLessons[k].priority };
+			vec_t pri_item;
+			for (int d = 0; d < strategic_depth * 2; d++) pri_item.push_back(usefulLessons[k].classes[d]);
+
 			train_output_data.push_back(pri_item);
 		}
 
@@ -596,7 +603,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	adam opt; opt.alpha /= 30;
 	//int succeeded_tests;
 
-	size_t epochs = 100;
+	int epochs = 100;
 	loss = net.get_loss<mse>(train_input_data, train_output_data);
 	do
 	{
@@ -610,18 +617,18 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 
 		// Scoring
 
-		int succeeded_tests = 0;
+		int succeeded_tests = -123;
 		for (int i = 0; i < usefulLessons.size(); i++)
 		{
 			Table field_data = usefulLessons[i].position;
 
-			Point move = makeMove(net, field_data, false);
+			Point move = makeMove(net, field_data, strategic_depth, false);
 
 			bool hit_the_point = 
 				move.i == (field_data.width - 1) / 2 &&
 				move.j == (field_data.height - 1) / 2;
 
-			if ((abs(usefulLessons[i].priority) < 0.0001) ||
+			/*if ((abs(usefulLessons[i].priority) < 0.0001) ||
 				(usefulLessons[i].priority > 0 && hit_the_point) ||
 				(usefulLessons[i].priority < 0 && !hit_the_point))
 			{
@@ -633,7 +640,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 			{
 				printf("FAIL\n");
 				printField(usefulLessons[i].position.vals, usefulLessons[i].position.width, usefulLessons[i].position.height);
-			}
+			}*/
 		}
 
 		ee += epochs;
@@ -647,6 +654,7 @@ int main(int argc, char** argv)
 	std::cout << "NN backend: " << core::default_engine() << std::endl;
 
 	const int field_w = 7, field_h = 7, vic_line_len = 4;
+	const int strategic_depth = vic_line_len;
 
 	network<sequential> net;
 	try
@@ -691,11 +699,11 @@ int main(int argc, char** argv)
 			layers::fc(size * 2, size * 3) << tanh_layer(size * 3) <<
 			layers::fc(size * 3, size * 4) << tanh_layer(size * 4) <<
 			layers::fc(size * 4, size * 5) << tanh_layer(size * 5) <<
+/*			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
 			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
 			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
 			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
-			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
-			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
+			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<*/
 			layers::fc(size * 5, size * 4) << tanh_layer(size * 4) <<
 			layers::fc(size * 4, size * 3) << tanh_layer(size * 3) <<
 			layers::fc(size * 3, size * 2) << tanh_layer(size * 2) <<
@@ -703,9 +711,9 @@ int main(int argc, char** argv)
 			layers::conv(field_w, field_h, conv_kernel, 2, maps) <<
 
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+/*			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
-			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
-			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<*/
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 
@@ -713,17 +721,17 @@ int main(int argc, char** argv)
 
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+/*			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
-			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
-			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<*/
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 
-			layers::fc(conv2_out * maps2, 1) << tanh_layer(1);
+			layers::fc(conv2_out * maps2, strategic_depth * 2) << tanh_layer(strategic_depth * 2);
 	}
 
 	if (argc == 2 && strcmp(argv[1], "train-first") == 0)
 	{
-		train(field_w, field_h, net, 1e-4);
+		train(field_w, field_h, strategic_depth, net, 1e-4);
 	}
 
 
@@ -782,14 +790,14 @@ int main(int argc, char** argv)
 			else
 			{
 				// AI move
-				move = makeMove(net, field_data_me_him);
+				move = makeMove(net, field_data_me_him, strategic_depth);
 			}
 
 			if (victor != -1) {
 				// If not draw
 				if (moveId > 0)
 				{
-					lessons[pI].push_back(Lesson(field_data_me_him, field_w, field_h, move, 1.0));
+					lessons[pI].push_back(Lesson(field_data_me_him, field_w, field_h, move, vector<float>(strategic_depth * 2, 0.0)));	// Classes set to zeros
 				}
 				field_data.vals[(move.j * field_w + move.i) * 2 + pI] = 1.0;
 			}
@@ -804,22 +812,21 @@ int main(int argc, char** argv)
 		vector<Lesson> usefulLessons;
 		float priority0 = 0.85;
 
-		for (int k = lessons[victor].size() - 1; k >= max((int)lessons[victor].size() - 5, 0); k--)
+		for (int k = lessons[victor].size() - 1; k >= max((int)lessons[victor].size() - 1 - strategic_depth, 0); k--)
 		{
 			int i = lessons[victor].size() - k - 1;
 
-			float priorityAttack = 0.85*pow(0.95, i);
-			float priorityDefence = 0.84;
+			//float priorityAttack = 0.85*pow(0.95, i);
+			//float priorityDefence = 0.84;
 
-
-			Lesson cur = lessons[victor][k].setPriority(priorityAttack);
-			
-			// In the book 1 means "me" and -1 means "other player", not "X" and "O"
-			//if (victor != 0 /* X */) cur = cur.inverse();
-
+			vector<float> priorityAttack(strategic_depth * 2, 0.0);
+			priorityAttack[i * 2 + 0] = 1.0;
+			Lesson cur = lessons[victor][k].setClasses(priorityAttack);
 			usefulLessons.push_back(cur);
 
-			Lesson curi = cur.inverseChannels().setPriority(priorityDefence);		// Defense is less prioritized than attack
+			vector<float> priorityDefence(strategic_depth * 2, 0.0);
+			priorityAttack[i * 2 + 1] = 1.0;
+			Lesson curi = cur.inverseChannels().setClasses(priorityDefence);		// Defense is less prioritized than attack
 			usefulLessons.push_back(curi);
 			
 			//priority /= 1.2;
@@ -845,7 +852,6 @@ int main(int argc, char** argv)
 		{
 			lessonsFile.write("L", 1);	// Magic for a lesson
 
-			lessonsFile.write((const char*) &(usefulLessons[k].priority), 4);
 			for (int j = 0; j < field_h; j++) {
 				for (int i = 0; i < field_w; i++) {
 					for (int c = 0; c < 2; c++) {
@@ -853,12 +859,17 @@ int main(int argc, char** argv)
 					}
 				}
 			}
+
+			for (int d = 0; d < strategic_depth * 2; d++) {
+				lessonsFile.write((const char*) &(usefulLessons[k].classes[d]), 4);
+			}
+
 		}
 		lessonsFile.close();
 
 		printf("%d lessons appended to the book\n", usefulLessons.size());
 
-		train(field_w, field_h, net, 1e-3);
+		train(field_w, field_h, strategic_depth, net, 1e-3);
 
 		printf("Saving net...");
 		net.save("xoxonet.weights");
