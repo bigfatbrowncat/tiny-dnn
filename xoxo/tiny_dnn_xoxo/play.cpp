@@ -383,7 +383,7 @@ vector<float> score(network<sequential> net, Table field, int strategic_depth)
 	return res;
 }
 
-Point makeMove(network<sequential> net, Table field_data, int strategic_depth, bool rotate_and_mirror = true)
+Point makeMove(network<sequential> net, Table field_data, vector<float> strat_coeff, int strategic_depth, bool rotate_and_mirror = true)
 {
 	int cx = (field_data.width - 1) / 2;
 	int cy = (field_data.height - 1) / 2;
@@ -444,7 +444,7 @@ Point makeMove(network<sequential> net, Table field_data, int strategic_depth, b
 				ai_prior = score(net, rolled, strategic_depth);
 			}
 
-			vector<float> strat_coeff(strategic_depth * 2, 1.0f);	// We need to set them to something
+			//vector<float> strat_coeff(strategic_depth * 2, 1.0f);	// We need to set them to something
 			float ai_prior_sum = 0.0;
 			for (int d = 0; d < strategic_depth * 2; d++) {
 				ai_prior_sum += ai_prior[d] * strat_coeff[d];
@@ -465,7 +465,7 @@ Point makeMove(network<sequential> net, Table field_data, int strategic_depth, b
 			show[yy * field_data.width + xx] = res[dy * field_data.width + dx];
 		}
 	}
-	printPriors(show, field_data.width, field_data.height);
+	//printPriors(show, field_data.width, field_data.height);
 
 	// Searching for the hightest priority
 	int maxdx = -1, maxdy = -1; float m = -1.0;
@@ -497,7 +497,7 @@ Point makeMove(network<sequential> net, Table field_data, int strategic_depth, b
 	return move;
 }
 
-void train(int field_w, int field_h, int strategic_depth, network<sequential> net, float mse_stop)
+vector<float> train(int field_w, int field_h, int strategic_depth, network<sequential> net, float mse_stop)
 {
 	vector<Lesson> usefulLessons;
 
@@ -556,7 +556,7 @@ void train(int field_w, int field_h, int strategic_depth, network<sequential> ne
 	vector<vec_t> train_input_data;
 	vector<vec_t> train_output_data;
 
-	int repeats = 1;
+	int repeats = 3;
 
 	for (int repeat = 0; repeat < repeats; repeat++)
 	{
@@ -573,12 +573,12 @@ void train(int field_w, int field_h, int strategic_depth, network<sequential> ne
 		}
 
 		// Adding some fake lessons
-		/*for (int k = 0; k < usefulLessons.size(); ++k)
+/*		for (int k = 0; k < usefulLessons.size(); ++k)
 		{
-			if (usefulLessons[k].priority < 0.0) continue; // No falses for negative lessons
+			//if (usefulLessons[k].priority < 0.0) continue; // No falses for negative lessons
 
-			Lesson falseLesson = usefulLessons[k];
-			falseLesson.priority = -usefulLessons[k].priority / 5; // It is a false
+			Lesson falseLesson = usefulLessons[k % usefulLessons.size()];
+			falseLesson.setClasses(vector<float>(strategic_depth * 2, 0.0));
 			falseLesson.position = falseLesson.position.translateRoll(
 				rand() % (falseLesson.field_w - 2) + 1,
 				rand() % (falseLesson.field_h - 2) + 1
@@ -586,7 +586,8 @@ void train(int field_w, int field_h, int strategic_depth, network<sequential> ne
 
 			train_input_data.push_back(falseLesson.position.toVec());
 
-			vec_t pri_item{ 0.0 };
+			vec_t pri_item;
+			for (int d = 0; d < strategic_depth * 2; d++) pri_item.push_back(falseLesson.classes[d]);
 			train_output_data.push_back(pri_item);
 		}*/
 
@@ -615,38 +616,74 @@ void train(int field_w, int field_h, int strategic_depth, network<sequential> ne
 		delta_loss_per_epoch = (old_loss - loss) / epochs;
 		//if (delta_loss_per_epoch < 0) opt.alpha /= 2;
 
-		// Scoring
+		ee += epochs;
+		cout << "epoch " << ee << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << "; alpha=" << opt.alpha << endl;
+	} while (delta_loss_per_epoch > mse_stop/* || delta_loss_per_epoch < 0*/);
 
-		int succeeded_tests = -123;
+	// Scoring and fine-tuning strategic coefficients
+
+	int probe_max = 15;
+	map<vector<float>, int> score;
+	for (int probe = 0; probe < probe_max; probe++) {
+
+		vector<float> strat_coeff(strategic_depth * 2, 1.0f);	// We need to set them to something
+		for (int i = 0; i < strat_coeff.size(); i++) {
+			strat_coeff[i] = (float)rand() / RAND_MAX;
+		}
+
+		int succeeded_tests = 0;
 		for (int i = 0; i < usefulLessons.size(); i++)
 		{
 			Table field_data = usefulLessons[i].position;
 
-			Point move = makeMove(net, field_data, strategic_depth, false);
+			Point move = makeMove(net, field_data, strat_coeff, strategic_depth, false);
 
-			bool hit_the_point = 
+			bool hit_the_point =
 				move.i == (field_data.width - 1) / 2 &&
 				move.j == (field_data.height - 1) / 2;
 
-			/*if ((abs(usefulLessons[i].priority) < 0.0001) ||
-				(usefulLessons[i].priority > 0 && hit_the_point) ||
-				(usefulLessons[i].priority < 0 && !hit_the_point))
+			float smallEpsilon = 0.0001;
+			float lessonAmplitude = 0.0f;
+			for (int d = 0; d < usefulLessons[i].classes.size(); d++) {
+				if (abs(usefulLessons[i].classes[d]) > smallEpsilon) {
+					lessonAmplitude = usefulLessons[i].classes[d];
+					break;	// Only one non-zero value is possible
+				}
+			}
+
+			if ((abs(lessonAmplitude) < smallEpsilon) ||
+				(lessonAmplitude > 0 && hit_the_point) ||
+				(lessonAmplitude < 0 && !hit_the_point))
 			{
 				succeeded_tests++;
-				printf("SUCCESS\n");
-				printField(usefulLessons[i].position.vals,usefulLessons[i].position.width, usefulLessons[i].position.height);
+				/*printf("SUCCESS\n");
+				printField(usefulLessons[i].position.vals,usefulLessons[i].position.width, usefulLessons[i].position.height);*/
 			}
 			else
 			{
-				printf("FAIL\n");
-				printField(usefulLessons[i].position.vals, usefulLessons[i].position.width, usefulLessons[i].position.height);
-			}*/
+				/*printf("FAIL\n");
+				printField(usefulLessons[i].position.vals, usefulLessons[i].position.width, usefulLessons[i].position.height);*/
+			}
 		}
 
-		ee += epochs;
-		cout << "epoch " << ee << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << "; alpha=" << opt.alpha << "; learned: " << succeeded_tests << " of " << usefulLessons.size() << "(" << (int)(succeeded_tests * 100 / usefulLessons.size()) << "%)" << endl;
+		cout << "Probing: " << succeeded_tests << " of " << usefulLessons.size() << "(" << (int)(succeeded_tests * 100 / usefulLessons.size()) << "%)" << endl;
+		score.insert(pair<vector<float>, int>(strat_coeff, succeeded_tests));
+	}
 
-	} while (delta_loss_per_epoch > mse_stop/* || delta_loss_per_epoch < 0*/);
+	// Finding maximum succeeded tests among probes
+	int score_max = 0;
+	vector<float> strat_coeff_max;
+	for (auto& sc : score)
+	{
+		if (sc.second > score_max) {
+			score_max = sc.second;
+			strat_coeff_max = sc.first;
+		}
+	}
+
+	cout << "Maximum found: " << score_max << " of " << usefulLessons.size() << "(" << (int)(score_max * 100 / usefulLessons.size()) << "%)" << endl;
+
+	return strat_coeff_max;
 }
 
 int main(int argc, char** argv)
@@ -654,7 +691,7 @@ int main(int argc, char** argv)
 	std::cout << "NN backend: " << core::default_engine() << std::endl;
 
 	const int field_w = 7, field_h = 7, vic_line_len = 4;
-	const int strategic_depth = vic_line_len;
+	const int strategic_depth = vic_line_len + 1;
 
 	network<sequential> net;
 	try
@@ -686,7 +723,7 @@ int main(int argc, char** argv)
 		int conv1_out = conv1_out_w * conv1_out_h;
 		int maps = 2 * conv_kernel * conv_kernel;	// from the ceiling
 
-		int conv_kernel2 = 4;
+		int conv_kernel2 = 5;
 		int conv2_out_w = conv1_out_w - conv_kernel2 + 1;
 		int conv2_out_h = conv1_out_h - conv_kernel2 + 1;
 		int conv2_out = conv2_out_w * conv2_out_h;
@@ -696,42 +733,55 @@ int main(int argc, char** argv)
 
 
 		net <<
-			layers::fc(size * 2, size * 3) << tanh_layer(size * 3) <<
+/*			layers::fc(size * 2, size * 3) << tanh_layer(size * 3) <<
 			layers::fc(size * 3, size * 4) << tanh_layer(size * 4) <<
 			layers::fc(size * 4, size * 5) << tanh_layer(size * 5) <<
-/*			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
 			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
 			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
 			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
-			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<*/
+			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
+			layers::fc(size * 5, size * 5) << tanh_layer(size * 5) <<
 			layers::fc(size * 5, size * 4) << tanh_layer(size * 4) <<
 			layers::fc(size * 4, size * 3) << tanh_layer(size * 3) <<
-			layers::fc(size * 3, size * 2) << tanh_layer(size * 2) <<
+			layers::fc(size * 3, size * 2) << tanh_layer(size * 2) <<*/
 
 			layers::conv(field_w, field_h, conv_kernel, 2, maps) <<
 
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 /*			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
-			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<*/
-			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 
 			layers::conv(conv1_out_w, conv1_out_h, conv_kernel2, maps, maps2) <<
 
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
-/*			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
+/*			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<*/
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 
 			layers::fc(conv2_out * maps2, strategic_depth * 2) << tanh_layer(strategic_depth * 2);
 	}
 
+
+	vector<float> strat_coeff(strategic_depth * 2, 1.0f);	// TODO Save them somehow
+
+	cout << "Reading strat file" << endl;
+	ifstream stratFile;
+	stratFile.open("strat.dat", ios::binary | ios::in);
+	for (int k = 0; k < strat_coeff.size(); k++)
+	{
+		stratFile.read((char*) &(strat_coeff[k]), 4);
+	}
+	stratFile.close();
+
+
 	if (argc == 2 && strcmp(argv[1], "train-first") == 0)
 	{
-		train(field_w, field_h, strategic_depth, net, 1e-4);
+		strat_coeff = train(field_w, field_h, strategic_depth, net, 1e-3);
 	}
 
 
@@ -790,7 +840,7 @@ int main(int argc, char** argv)
 			else
 			{
 				// AI move
-				move = makeMove(net, field_data_me_him, strategic_depth);
+				move = makeMove(net, field_data_me_him, strat_coeff, strategic_depth);
 			}
 
 			if (victor != -1) {
@@ -810,40 +860,35 @@ int main(int argc, char** argv)
 		printf("Other player wins. I shall learn\n");
 
 		vector<Lesson> usefulLessons;
-		float priority0 = 0.85;
 
 		for (int k = lessons[victor].size() - 1; k >= max((int)lessons[victor].size() - 1 - strategic_depth, 0); k--)
 		{
 			int i = lessons[victor].size() - k - 1;
 
-			//float priorityAttack = 0.85*pow(0.95, i);
-			//float priorityDefence = 0.84;
-
-			vector<float> priorityAttack(strategic_depth * 2, 0.0);
-			priorityAttack[i * 2 + 0] = 1.0;
-			Lesson cur = lessons[victor][k].setClasses(priorityAttack);
+			vector<float> classes(strategic_depth * 2, 0.0);
+			classes[i * 2 + 0] = 1.0;
+			Lesson cur = lessons[victor][k].setClasses(classes);
 			usefulLessons.push_back(cur);
-
-			vector<float> priorityDefence(strategic_depth * 2, 0.0);
-			priorityAttack[i * 2 + 1] = 1.0;
-			Lesson curi = cur.inverseChannels().setClasses(priorityDefence);		// Defense is less prioritized than attack
-			usefulLessons.push_back(curi);
 			
-			//priority /= 1.2;
+			vector<float> classesDefense(strategic_depth * 2, 0.0);
+			classesDefense[i * 2 + 1] = 1.0;
+			Lesson curi = lessons[victor][k].inverseChannels().setClasses(classesDefense);
+			usefulLessons.push_back(curi);
 		}
 
 		
 		/*int looser = (victor + 1) % 2;
-		priority = -0.2;
-		for (int k = lessons[looser].size() - 1; k >= max((int)lessons[looser].size() - 2, 0); k--)
+		for (int k = lessons[looser].size() - 1; k >= max((int)lessons[looser].size() - 1 - strategic_depth, 0); k--)
 		{
-			Lesson cur = lessons[looser][k].setPriority(priority);
+			int i = lessons[looser].size() - k - 1;
+
+			vector<float> classes(strategic_depth * 2, 0.0);
+			classes[i * 2 + 1] = -1.0;
+			Lesson cur = lessons[looser][k].setClasses(classes);
 			usefulLessons.push_back(cur);
 
-			priority /= 1.5;
 		}*/
-		
-		//usefulLessons.push_back(Lesson(Table::empty(field_w, field_h), field_w, field_h, 0.0));
+
 
 		// Saving useful lessons to file
 		ofstream lessonsFile;
@@ -869,7 +914,16 @@ int main(int argc, char** argv)
 
 		printf("%d lessons appended to the book\n", usefulLessons.size());
 
-		train(field_w, field_h, strategic_depth, net, 1e-3);
+		strat_coeff = train(field_w, field_h, strategic_depth, net, 1e-3);
+
+		printf("Saving strat...");
+		ofstream stratFile;
+		stratFile.open("strat.dat", ios::binary | ios::out);
+		for (int k = 0; k < strat_coeff.size(); k++)
+		{
+			stratFile.write((const char*) &(strat_coeff[k]), 4);
+		}
+		stratFile.close();
 
 		printf("Saving net...");
 		net.save("xoxonet.weights");
