@@ -11,10 +11,12 @@ if(MSVC)
         string(REPLACE ${tiny_dnn_relpath} "tiny_dnn" _source_path_msvc ${_source_path_msvc})
         source_group("${_source_path_msvc}" FILES "${_source}")
     endforeach()
+    file(GLOB_RECURSE xoxo_headers "${CMAKE_SOURCE_DIR}/xoxo/tiny_dnn_xoxo/*.h")
+    file(GLOB_RECURSE xoxo_cpp "${CMAKE_SOURCE_DIR}/xoxo/tiny_dnn_xoxo/*.cpp")
 endif()
 
 	
-add_executable(tiny_dnn_xoxo_play tiny_dnn_xoxo/play.cpp ${tiny_dnn_headers})
+add_executable(tiny_dnn_xoxo_play tiny_dnn_xoxo/play.cpp ${xoxo_headers} ${xoxo_cpp} ${tiny_dnn_headers})
 target_link_libraries(tiny_dnn_xoxo_play
     ${project_library_target_name} ${REQUIRED_LIBRARIES})
 
