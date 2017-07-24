@@ -216,7 +216,9 @@ public:
 		field_w(field_w), field_h(field_h), answer(Table::empty(field_w, field_h, 1)),
 		position(position)
 	{
+
 		answer.vals[move.j * field_w + move.i] = 1.0;
+
 	}
 
 	Lesson(Table position, int field_w, int field_h, Table answer) :
@@ -279,10 +281,8 @@ public:
 
 };
 
-Point makeMove(network<sequential> net, Table field_data, bool rotate_and_mirror = true)
+Point makeMove(network<sequential> net, Table field_data, int extDepth, bool rotate_and_mirror = true)
 {
-	int extDepth = 3;
-
 	vector<float> resVec(field_data.width * field_data.height * 1/* channels */);
 	std::fill(resVec.begin(), resVec.end(), -100.0f);	// As low as possible
 	
@@ -291,7 +291,7 @@ Point makeMove(network<sequential> net, Table field_data, bool rotate_and_mirror
 
 	Table ai_prior(field_data.width, field_data.height, 1);
 
-	if (rotate_and_mirror)
+	/*if (rotate_and_mirror)
 	{
 		Table table = field_data;
 
@@ -318,7 +318,7 @@ Point makeMove(network<sequential> net, Table field_data, bool rotate_and_mirror
 		ai_prior = ai_tmp;
 
 	}
-	else
+	else*/
 	{
 		Table extended = field_data.extendToroidal(extDepth);
 		ai_prior = Table::score(net, extended);
@@ -372,7 +372,7 @@ Point makeMove(network<sequential> net, Table field_data, bool rotate_and_mirror
 	return move;
 }
 
-void train(int field_w, int field_h, network<sequential> net, float mse_stop)
+void train(int field_w, int field_h, network<sequential> net, int extDepth, float mse_stop)
 {
 	vector<Lesson> usefulLessons;
 
@@ -418,13 +418,13 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	lessonsFile.close();
 
 	// Adding "zero" lesson
-	/*usefulLessons.push_back(
+	usefulLessons.push_back(
 		Lesson(
 			Table::empty(field_w, field_h, 2), 
 			field_w, field_h, 
-			Table::empty(field_w, field_h, 1)
+			Table::ones(field_w, field_h, 1)
 		)
-	);*/
+	);
 
 
 /*	for (int i = 0; i < usefulLessons.size(); i++)
@@ -440,8 +440,6 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	vector<vec_t> train_output_data;
 
 	int repeats = 1;
-
-	int extDepth = 3;
 
 	for (int repeat = 0; repeat < repeats; repeat++)
 	{
@@ -463,22 +461,21 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	double loss = 0; int ee = 0;
 	
 	double delta_loss_per_epoch;
+	int succeeded_tests_old = 0;
 	
 	//gradient_descent opt; opt.alpha = 0.75;
-	adam opt; opt.alpha /= 30;
+	adam opt; //opt.alpha /= 2;
 	//int succeeded_tests;
 
-	int epochs = 50;
+	int epochs = 5;
 	loss = net.get_loss<mse>(train_input_data, train_output_data);
 	do
 	{
+		net.save("best.weights");
 		net.fit<mse>(opt, train_input_data, train_output_data, batch_size, epochs);
 
 		double old_loss = loss;
 		loss = net.get_loss<mse>(train_input_data, train_output_data);
-
-		delta_loss_per_epoch = (old_loss - loss) / epochs;
-		//if (delta_loss_per_epoch < 0) opt.alpha /= 2;
 
 		ee += epochs;
 		cout << "epoch " << ee << ": loss=" << loss << " dloss=" << delta_loss_per_epoch << "; alpha=" << opt.alpha << endl;
@@ -488,7 +485,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 		{
 			Table field_data = usefulLessons[i].position;
 
-			Point move = makeMove(net, field_data, false);
+			Point move = makeMove(net, field_data, extDepth, false);
 
 			bool hit_the_point = usefulLessons[i].answer.vals[(move.j * field_data.width + move.i) * 1 + 0] > 0.5;
 			/*	move.i == (field_data.width - 1) / 2 &&
@@ -515,15 +512,29 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 
 		cout << "Probing: " << succeeded_tests << " of " << usefulLessons.size() << "(" << (int)(succeeded_tests * 100 / usefulLessons.size()) << "%)" << endl;
 
-	} while (delta_loss_per_epoch > mse_stop/* || delta_loss_per_epoch < 0*/);
+		if (/*delta_loss_per_epoch < 0 || */succeeded_tests_old > succeeded_tests) {
+			opt.alpha /= 2;
+			ee -= epochs;
+			net.load("best.weights");
+			cout << "(replaying)" << endl;
+		}
+		else
+		{
+			succeeded_tests_old = succeeded_tests;
+			delta_loss_per_epoch = (old_loss - loss) / epochs;
+
+		}
+
+	} while (loss > mse_stop/* || delta_loss_per_epoch < 0*/);
 }
 
 int main(int argc, char** argv)
 {
 	std::cout << "NN backend: " << core::default_engine() << std::endl;
 
-	const int field_w = 7, field_h = 7, vic_line_len = 4;
+	const int field_w = 7, field_h = 7, vic_line_len = 4, extDepth = 3;
 	const int strategic_depth = vic_line_len + 1;
+	const float mseStop = 1e-2;
 
 	network<sequential> net;
 	try
@@ -551,7 +562,7 @@ int main(int argc, char** argv)
 		int conv1_out_h = extField_h - conv_kernel + 1;
 		int conv1_out = conv1_out_w * conv1_out_h;
 		cout << "conv1_out_w: " << conv1_out_w << ", conv1_out_h: " << conv1_out_h << endl;
-		int maps = 4 * conv_kernel * conv_kernel;	// from the ceiling
+		int maps = 4*conv_kernel * conv_kernel;	// from the ceiling
 
 		/*int conv_kernel2 = 2;
 		int conv2_out_w = conv1_out_w - conv_kernel2 + 1;
@@ -566,8 +577,8 @@ int main(int argc, char** argv)
 
 			layers::conv(extField_w, extField_h, conv_kernel, 2, maps) <<
 
-			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
-			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+			layers::fc(conv1_out * maps, conv1_out * maps/2) << tanh_layer(conv1_out * maps/2) <<
+			layers::fc(conv1_out * maps/2, conv1_out * maps/2) << tanh_layer(conv1_out * maps/2) <<
 /*			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 
@@ -583,12 +594,12 @@ int main(int argc, char** argv)
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<
 			layers::fc(conv2_out * maps2, conv2_out * maps2) << tanh_layer(conv2_out * maps2) <<*/
 
-			layers::fc(conv1_out * maps, size) << tanh_layer(size);
+			layers::fc(conv1_out * maps/2, size);
 	}
 
 	if (argc == 2 && strcmp(argv[1], "train-first") == 0)
 	{
-		train(field_w, field_h, net, 1e-3);
+		train(field_w, field_h, net, extDepth, mseStop);
 	}
 
 
@@ -640,7 +651,7 @@ int main(int argc, char** argv)
 			else
 			{
 				// AI move
-				move = makeMove(net, field_data_me_him);
+				move = makeMove(net, field_data_me_him, extDepth);
 			}
 
 			if (victor != -1) {
@@ -720,7 +731,7 @@ int main(int argc, char** argv)
 
 		printf("%d lessons appended to the book\n", usefulLessons.size());
 
-		train(field_w, field_h, net, 1e-3);
+		train(field_w, field_h, net, extDepth, mseStop);
 
 		printf("Saving net...");
 		net.save("xoxonet.weights");

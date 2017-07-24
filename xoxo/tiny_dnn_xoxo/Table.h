@@ -15,6 +15,10 @@ public:
 		std::vector<float> vals(width * height * channels, 0.0);
 		return Table(vals, width, height, channels);
 	}
+	static Table ones(int width, int height, int channels) {
+		std::vector<float> vals(width * height * channels, 1.0);
+		return Table(vals, width, height, channels);
+	}
 
 	Table(std::vector<float> vals, int width, int height, int channels) : vals(vals), width(width), height(height), channels(channels) { }
 	Table(int width, int height, int channels) : width(width), height(height), channels(channels) { }
