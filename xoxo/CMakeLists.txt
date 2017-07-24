@@ -13,10 +13,11 @@ if(MSVC)
     endforeach()
     file(GLOB_RECURSE xoxo_headers "${CMAKE_SOURCE_DIR}/xoxo/tiny_dnn_xoxo/*.h")
     file(GLOB_RECURSE xoxo_cpp "${CMAKE_SOURCE_DIR}/xoxo/tiny_dnn_xoxo/*.cpp")
+    file(GLOB_RECURSE xoxo_c "${CMAKE_SOURCE_DIR}/xoxo/tiny_dnn_xoxo/*.c")
 endif()
 
 	
-add_executable(tiny_dnn_xoxo_play tiny_dnn_xoxo/play.cpp ${xoxo_headers} ${xoxo_cpp} ${tiny_dnn_headers})
+add_executable(tiny_dnn_xoxo_play tiny_dnn_xoxo/play.cpp ${xoxo_headers} ${xoxo_cpp} ${xoxo_c} ${tiny_dnn_headers})
 target_link_libraries(tiny_dnn_xoxo_play
     ${project_library_target_name} ${REQUIRED_LIBRARIES})
 

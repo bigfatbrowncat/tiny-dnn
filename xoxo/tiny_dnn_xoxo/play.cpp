@@ -288,26 +288,26 @@ Point makeMove(network<sequential> net, Table field_data, bool rotate_and_mirror
 	
 	Table res(resVec, field_data.width, field_data.height, 1);
 
-	Table extended = field_data.extendToroidal(extDepth);
 
 	Table ai_prior(field_data.width, field_data.height, 1);
 
 	if (rotate_and_mirror)
 	{
+		Table table = field_data;
+
 		// Rotating & scoring
 		vector<Table> scoredRotated;
 		for (int angle = 0; angle < 4; angle++) {
+
+			Table ai_prior_cur = Table::score(net, table.extendToroidal(extDepth));
+			Table ai_prior_cur_m = Table::score(net, table.mirrorHorizontal().extendToroidal(extDepth)).mirrorHorizontal();
+			scoredRotated.push_back(ai_prior_cur);
+			scoredRotated.push_back(ai_prior_cur_m);
+
+			table = table.rotateClockwise();
 			for (auto& sR : scoredRotated) {
 				sR = sR.rotateClockwise();
 			}
-
-			Table ai_prior_cur = Table::score(net, extended);
-			Table ai_prior_cur_m = Table::score(net, extended.mirrorHorizontal()).mirrorHorizontal();
-			scoredRotated.push_back(ai_prior_cur);
-			scoredRotated.push_back(ai_prior_cur_m);
-		}
-		for (auto& sR : scoredRotated) {
-			sR = sR.rotateClockwise();
 		}
 
 		Table ai_tmp = scoredRotated[0];
@@ -320,6 +320,7 @@ Point makeMove(network<sequential> net, Table field_data, bool rotate_and_mirror
 	}
 	else
 	{
+		Table extended = field_data.extendToroidal(extDepth);
 		ai_prior = Table::score(net, extended);
 	}
 
@@ -417,13 +418,13 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	lessonsFile.close();
 
 	// Adding "zero" lesson
-	usefulLessons.push_back(
+	/*usefulLessons.push_back(
 		Lesson(
 			Table::empty(field_w, field_h, 2), 
 			field_w, field_h, 
 			Table::empty(field_w, field_h, 1)
 		)
-	);
+	);*/
 
 
 /*	for (int i = 0; i < usefulLessons.size(); i++)
@@ -454,30 +455,11 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 			train_output_data.push_back(pri_item);
 		}
 
-		// Adding some fake lessons
-/*		for (int k = 0; k < usefulLessons.size(); ++k)
-		{
-			//if (usefulLessons[k].priority < 0.0) continue; // No falses for negative lessons
-
-			Lesson falseLesson = usefulLessons[k % usefulLessons.size()];
-			falseLesson.setClasses(vector<float>(strategic_depth * 2, 0.0));
-			falseLesson.position = falseLesson.position.translateRoll(
-				rand() % (falseLesson.field_w - 2) + 1,
-				rand() % (falseLesson.field_h - 2) + 1
-			);
-
-			train_input_data.push_back(falseLesson.position.toVec());
-
-			vec_t pri_item;
-			for (int d = 0; d < strategic_depth * 2; d++) pri_item.push_back(falseLesson.classes[d]);
-			train_output_data.push_back(pri_item);
-		}*/
-
 	}
 
 	printf("Training...\n");
 
-	size_t batch_size = std::min((int)train_input_data.size(), 5);//training_batch;
+	size_t batch_size = std::min((int)train_input_data.size(), 10);//training_batch;
 	double loss = 0; int ee = 0;
 	
 	double delta_loss_per_epoch;
@@ -486,7 +468,7 @@ void train(int field_w, int field_h, network<sequential> net, float mse_stop)
 	adam opt; opt.alpha /= 30;
 	//int succeeded_tests;
 
-	int epochs = 100;
+	int epochs = 50;
 	loss = net.get_loss<mse>(train_input_data, train_output_data);
 	do
 	{
@@ -558,14 +540,18 @@ int main(int argc, char** argv)
 		int extField_w = field_w + extDepth * 2;
 		int extField_h = field_h + extDepth * 2;
 
+		cout << "extField_w: " << extField_w << ", extField_h: " << extField_h << endl;
+
+
 		int size = field_w * field_h;
 
 
-		int conv_kernel = 4;
+		int conv_kernel = 7;
 		int conv1_out_w = extField_w - conv_kernel + 1;
 		int conv1_out_h = extField_h - conv_kernel + 1;
 		int conv1_out = conv1_out_w * conv1_out_h;
-		int maps = 2 * conv_kernel * conv_kernel;	// from the ceiling
+		cout << "conv1_out_w: " << conv1_out_w << ", conv1_out_h: " << conv1_out_h << endl;
+		int maps = 4 * conv_kernel * conv_kernel;	// from the ceiling
 
 		/*int conv_kernel2 = 2;
 		int conv2_out_w = conv1_out_w - conv_kernel2 + 1;
@@ -582,9 +568,10 @@ int main(int argc, char** argv)
 
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+/*			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
+
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
-			/*layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<
 			layers::fc(conv1_out * maps, conv1_out * maps) << tanh_layer(conv1_out * maps) <<*/
 
 			/*layers::conv(conv1_out_w, conv1_out_h, conv_kernel2, maps, maps2) <<
